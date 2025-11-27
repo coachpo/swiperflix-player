@@ -2,6 +2,16 @@ import { ApiConfig, PlaylistResponse, VideoItem } from "./types";
 import { resolveEndpoint } from "./config";
 
 const DEFAULT_TIMEOUT = 10_000;
+type ImpressionPayload = {
+  watchedSeconds: number;
+  completed: boolean;
+};
+
+type NotPlayablePayload = {
+  reason?: string | null;
+  timestamp?: string | null;
+  sessionId?: string | null;
+};
 
 function sameOrigin(target: URL, base: URL) {
   return target.protocol === base.protocol && target.host === base.host;
@@ -72,4 +82,43 @@ export async function sendReaction(config: ApiConfig, id: string, action: "like"
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id }),
   }, config);
+}
+
+export async function sendImpression(config: ApiConfig, id: string, payload: ImpressionPayload) {
+  const url = `${config.baseUrl}${resolveEndpoint(config.impressionPath, id)}`;
+  const resp = await withTimeout(
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(config),
+      },
+      body: JSON.stringify(payload),
+    }),
+  );
+
+  if (resp.ok) return true;
+  if (resp.status === 404) throw new Error("VIDEO_NOT_FOUND");
+  const data = await resp.json().catch(() => undefined);
+  throw new Error(data?.error?.message ?? "Impression failed");
+}
+
+export async function reportNotPlayable(config: ApiConfig, id: string, payload: NotPlayablePayload) {
+  const url = `${config.baseUrl}${resolveEndpoint(config.notPlayablePath, id)}`;
+  const resp = await withTimeout(
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...authHeaders(config),
+      },
+      body: JSON.stringify(payload),
+    }),
+  );
+
+  if (resp.ok) return { ok: true, duplicate: false as const };
+  if (resp.status === 409) return { ok: false, duplicate: true as const };
+  if (resp.status === 404) throw new Error("VIDEO_NOT_FOUND");
+  const data = await resp.json().catch(() => undefined);
+  throw new Error(data?.error?.message ?? "Report failed");
 }

@@ -26,6 +26,7 @@ import {
   DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import { cn, formatTime } from "@/lib/utils";
+import { reportNotPlayable, sendImpression } from "@/lib/api";
 import { usePlaylist } from "@/providers/playlist-provider";
 import { useToast } from "@/components/ui/use-toast";
 import { useSettings } from "@/providers/settings-provider";
@@ -104,6 +105,14 @@ export function VideoPlayer() {
   const loadStartRef = useRef<number | null>(null);
   const videoHostRef = useRef<HTMLDivElement | null>(null);
   const outgoingHostRef = useRef<HTMLDivElement | null>(null);
+  const sessionIdRef = useRef<string>(
+    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `sess-${Math.random().toString(36).slice(2)}`,
+  );
+  const impressionsSent = useRef<Set<string>>(new Set());
+  const reportedNotPlayable = useRef<Set<string>>(new Set());
+  const lastVideoIdRef = useRef<string | null>(null);
   // Always honor the requested preload count; skip connection-based throttling.
   const preloadBudget = useMemo(() => {
     const desired = config.preloadCount ?? 2;
@@ -154,6 +163,79 @@ export function VideoPlayer() {
   useEffect(() => {
     isScrubbingRef.current = isScrubbing;
   }, [isScrubbing]);
+
+  const clampWatchedSeconds = useCallback(
+    (seconds: number, video?: typeof current) => {
+      const target = video ?? current;
+      if (!target) return Math.max(0, seconds);
+      const knownDuration = target.id === current?.id && duration ? duration : target.duration;
+      if (knownDuration && Number.isFinite(knownDuration)) {
+        return Math.max(0, Math.min(seconds, knownDuration));
+      }
+      return Math.max(0, seconds);
+    },
+    [current, duration],
+  );
+
+  const getWatchedSeconds = useCallback(
+    (video?: typeof current) => {
+      const target = video ?? current;
+      if (!target) return 0;
+      if (videoRef.current && target.id === current?.id) {
+        return clampWatchedSeconds(videoRef.current.currentTime || 0, target);
+      }
+      const progress = lastProgress.current.get(target.id) ?? 0;
+      return clampWatchedSeconds(progress, target);
+    },
+    [clampWatchedSeconds, current],
+  );
+
+  const sendImpressionOnce = useCallback(
+    async (opts?: { video?: typeof current; completed?: boolean }) => {
+      const target = opts?.video ?? current;
+      if (!target || impressionsSent.current.has(target.id)) return;
+      const watchedSeconds = getWatchedSeconds(target);
+      try {
+        await sendImpression(config, target.id, {
+          watchedSeconds,
+          completed: !!opts?.completed,
+        });
+        impressionsSent.current.add(target.id);
+      } catch (error) {
+        console.warn("Failed to send impression", error);
+      }
+    },
+    [config, current, getWatchedSeconds],
+  );
+
+  const reportCurrentNotPlayable = useCallback(
+    async (reason?: string | null) => {
+      const target = current;
+      if (!target || reportedNotPlayable.current.has(target.id)) return;
+      const payload = {
+        reason: reason ?? "Playback error",
+        timestamp: new Date().toISOString(),
+        sessionId: sessionIdRef.current,
+      };
+      try {
+        const result = await reportNotPlayable(config, target.id, payload);
+        reportedNotPlayable.current.add(target.id);
+        if (result.duplicate) {
+          toast({ title: "Already reported", description: "We logged this playback issue earlier." });
+        } else {
+          toast({ title: "Issue reported", description: "Thanks, we'll investigate this video." });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Report failed";
+        if (message === "VIDEO_NOT_FOUND") {
+          toast({ title: "Video missing", description: "Skipping unavailable video." });
+        } else {
+          toast({ title: "Report failed", description: message });
+        }
+      }
+    },
+    [config, current, toast],
+  );
 
   const isUsableCache = useCallback((el: HTMLVideoElement | null | undefined, url: string) => {
     if (!el || !url) return false;
@@ -270,6 +352,7 @@ export function VideoPlayer() {
       }
     };
     const onEnded = () => {
+      void sendImpressionOnce({ video: current, completed: true });
       if (autoPlayNext) {
         setDirection("next");
         goNext();
@@ -306,7 +389,11 @@ export function VideoPlayer() {
       retryCounts.current.delete(current.url);
       setIsPlaying(false);
       setIsBuffering(false);
-      toast({ title: "Playback error", description: "Skipping to next video" });
+      const reason =
+        video.error?.message ||
+        `readyState=${video.readyState} networkState=${video.networkState}`;
+      void reportCurrentNotPlayable(reason);
+      toast({ title: "Playback error", description: "Reporting and skipping to next video" });
       setDirection("next");
       goNext();
     };
@@ -374,7 +461,17 @@ export function VideoPlayer() {
       suspendVideoFetch(video);
       cacheVideoElement(current.url, video);
     };
-  }, [current, goNext, autoPlayNext, cacheVideoElement, isUsableCache, suspendVideoFetch, toast]);
+  }, [
+    current,
+    goNext,
+    autoPlayNext,
+    cacheVideoElement,
+    isUsableCache,
+    suspendVideoFetch,
+    toast,
+    sendImpressionOnce,
+    reportCurrentNotPlayable,
+  ]);
 
   // Track direction and animate in/out
   useEffect(() => {
@@ -518,6 +615,28 @@ export function VideoPlayer() {
   useEffect(() => {
     setRotation(0);
   }, [current?.id]);
+
+  useEffect(() => {
+    const previousId = lastVideoIdRef.current;
+    if (previousId && previousId !== current?.id) {
+      const previousVideo = videos.find((v) => v.id === previousId);
+      if (previousVideo) {
+        void sendImpressionOnce({ video: previousVideo, completed: false });
+      }
+    }
+    lastVideoIdRef.current = current?.id ?? null;
+  }, [current?.id, videos, sendImpressionOnce]);
+
+  useEffect(() => {
+    return () => {
+      const previousId = lastVideoIdRef.current;
+      if (!previousId) return;
+      const previousVideo = videos.find((v) => v.id === previousId);
+      if (previousVideo) {
+        void sendImpressionOnce({ video: previousVideo, completed: false });
+      }
+    };
+  }, [videos, sendImpressionOnce]);
 
   useEffect(() => {
     const host = videoHostRef.current;
