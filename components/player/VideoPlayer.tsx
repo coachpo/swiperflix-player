@@ -386,7 +386,7 @@ export function VideoPlayer() {
       </div>
 
       {/* Overlay UI Layer (Pointer events pass through except on buttons) */}
-      <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 pb-8">
+      <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 pb-12">
         
         {/* Top Right: Speed Control (Removed) */}
         <div className="flex justify-end pt-16 pr-2 pointer-events-auto" />
@@ -400,21 +400,26 @@ export function VideoPlayer() {
                   <h2 className="font-semibold text-white drop-shadow-md">{friendlyTitle}</h2>
                 </div>
 
-                {/* Scrub Bar */}
-                <div className="w-full flex items-center">
-                   <VideoSlider
-                      value={[isScrubbing ? time : progress]}
-                      min={0}
-                      max={Math.max(duration, 0.1)}
-                      step={0.05}
-                      onValueChange={(v) => {
-                        setIsScrubbing(true);
-                        setTime(v[0]);
-                      }}
-                      onValueCommit={handleSeekCommit}
-                      className="flex-1 cursor-pointer h-1"
-                   />
-                </div>
+        {/* Full Width Scrub Bar */}
+        <div 
+          className="w-full pointer-events-auto absolute bottom-8 left-0 z-30 px-8"
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+           <VideoSlider
+              value={[isScrubbing ? time : progress]}
+              min={0}
+              max={Math.max(duration, 0.1)}
+              step={0.05}
+              onValueChange={(v) => {
+                setIsScrubbing(true);
+                setTime(v[0]);
+              }}
+              onValueCommit={handleSeekCommit}
+              className="cursor-pointer h-8 w-full"
+           />
+        </div>
             </div>
 
             {/* Right Action Bar (Vertical Stack) */}
