@@ -12,8 +12,6 @@ import {
   Pause,
   Zap,
   Settings2,
-  Volume2,
-  VolumeX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VideoSlider } from "@/components/ui/video-slider";
@@ -39,7 +37,6 @@ const LONG_PRESS_DELAY = 250;
 const REWIND_STEP = 0.4;
 const REWIND_INTERVAL = 200;
 const CACHE_LIMIT = 8;
-const AUDIO_STORAGE_KEY = "swiperflix-audio";
 export function VideoPlayer() {
   const {
     current,
@@ -77,11 +74,7 @@ export function VideoPlayer() {
   const [pendingPlay, setPendingPlay] = useState(false);
   const [activeEl, setActiveEl] = useState<HTMLVideoElement | null>(null);
   const [outgoingEl, setOutgoingEl] = useState<HTMLVideoElement | null>(null);
-  const [volume, setVolume] = useState(1);
-  const [muted, setMuted] = useState(false);
-  const lastVolumeRef = useRef(1);
   const [showDoubleTap, setShowDoubleTap] = useState(false);
-  const [showVolume, setShowVolume] = useState(false);
   const [firstFrameMs, setFirstFrameMs] = useState<number | null>(null);
   const [bufferEvents, setBufferEvents] = useState(0);
 
@@ -252,8 +245,6 @@ export function VideoPlayer() {
       video.currentTime = resumeAt;
       setIsBuffering(false);
       setBuffered(0);
-      video.muted = muted;
-      video.volume = muted ? 0 : volume;
     };
     const onFirstFrame = () => {
       if (firstFrameMs === null) {
@@ -379,7 +370,7 @@ export function VideoPlayer() {
       suspendVideoFetch(video);
       cacheVideoElement(current.url, video);
     };
-  }, [current, goNext, autoPlayNext, cacheVideoElement, isUsableCache, suspendVideoFetch, toast, muted, volume]);
+  }, [current, goNext, autoPlayNext, cacheVideoElement, isUsableCache, suspendVideoFetch, toast]);
 
   // Track direction and animate in/out
   useEffect(() => {
@@ -538,13 +529,6 @@ export function VideoPlayer() {
       videoRef.current.playbackRate = pressMode === "fast" ? 2 : playbackRate;
     }
   }, [playbackRate, pressMode]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    video.muted = muted;
-    video.volume = muted ? 0 : volume;
-  }, [muted, volume, activeEl]);
 
   const handleWheel = (event: React.WheelEvent) => {
     const { deltaX, deltaY } = event;
@@ -769,32 +753,6 @@ export function VideoPlayer() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [goNext, goPrev, handleLike, handleDislike, handleTogglePlay]);
 
-  // Volume & mute persistence
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    try {
-      const raw = localStorage.getItem(AUDIO_STORAGE_KEY);
-      if (!raw) return;
-      const parsed = JSON.parse(raw) as { volume?: number; muted?: boolean };
-      if (typeof parsed.volume === "number") {
-        setVolume(Math.min(1, Math.max(0, parsed.volume)));
-        lastVolumeRef.current = Math.min(1, Math.max(0, parsed.volume));
-      }
-      if (typeof parsed.muted === "boolean") {
-        setMuted(parsed.muted);
-      }
-    } catch {
-      // ignore corrupted storage
-    }
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(
-      AUDIO_STORAGE_KEY,
-      JSON.stringify({ volume, muted }),
-    );
-  }, [volume, muted]);
 
   const handleRotate = () => {
     setRotation((prev) => prev + 90);
@@ -917,50 +875,6 @@ export function VideoPlayer() {
                 {/* Metadata */}
                 <div className="space-y-1">
                   <h2 className="font-semibold text-white drop-shadow-md">{friendlyTitle}</h2>
-                </div>
-
-                {/* Volume */}
-                <div className="flex items-center gap-3 text-white/80">
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="h-9 w-9 p-0 bg-white/5 hover:bg-white/10"
-                    onClick={() => {
-                      setShowVolume((prev) => !prev);
-                      if (muted) {
-                        setMuted(false);
-                        setVolume(lastVolumeRef.current || 1);
-                      } else {
-                        setMuted(true);
-                      }
-                    }}
-                  >
-                    {muted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
-                  </Button>
-                  <div
-                    className={cn(
-                      "flex-1 overflow-hidden transition-all duration-200",
-                      showVolume ? "max-w-[220px] opacity-100" : "max-w-0 opacity-0 pointer-events-none",
-                    )}
-                  >
-                    {showVolume && (
-                      <VideoSlider
-                        value={[muted ? 0 : volume]}
-                        min={0}
-                        max={1}
-                        step={0.02}
-                        onValueChange={(v) => {
-                          const val = Math.min(1, Math.max(0, v[0]));
-                          setVolume(val);
-                          lastVolumeRef.current = val || lastVolumeRef.current;
-                          if (val === 0) setMuted(true);
-                          else setMuted(false);
-                        }}
-                        className="h-6"
-                      />
-                    )}
-                  </div>
-                  {showVolume && <span className="text-xs tabular-nums">{Math.round((muted ? 0 : volume) * 100)}%</span>}
                 </div>
 
         {/* Full Width Scrub Bar */}
