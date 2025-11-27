@@ -434,8 +434,8 @@ export function VideoPlayer() {
            )}
            
            {pressMode === "fast" && (
-              <Badge className="bg-black/60 text-white backdrop-blur-md px-4 py-2 text-sm animate-pulse border-none">
-                 <Zap className="mr-2 h-4 w-4 fill-yellow-400 text-yellow-400" />
+              <Badge className="bg-black/40 text-white/80 backdrop-blur-sm px-3 py-1.5 text-xs animate-pulse border-none">
+                 <Zap className="mr-2 h-3 w-3 fill-white/80 text-white/80" />
                  2x Speed
               </Badge>
            )}
