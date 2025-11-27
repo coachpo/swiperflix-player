@@ -49,6 +49,7 @@ export function VideoPlayer() {
   const { toast } = useToast();
   
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const outgoingRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [duration, setDuration] = useState(0);
@@ -60,12 +61,17 @@ export function VideoPlayer() {
   const [pressMode, setPressMode] = useState<"rewind" | "fast" | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [autoPlayNext, setAutoPlayNext] = useState(true);
+  const [direction, setDirection] = useState<"next" | "prev" | null>(null);
+  const [outgoing, setOutgoing] = useState<typeof current | null>(null);
+  const [animating, setAnimating] = useState(false);
 
   const pressTimer = useRef<NodeJS.Timeout | null>(null);
   const rewindInterval = useRef<NodeJS.Timeout | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const lastIndexRef = useRef(currentIndex);
+  const prevVideoRef = useRef<typeof current>(current);
 
-  // Sync video source
+  // Sync video source for the active video
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !current) return;
@@ -77,7 +83,10 @@ export function VideoPlayer() {
       setTime(0);
     };
     const onEnded = () => {
-      if (autoPlayNext) goNext();
+      if (autoPlayNext) {
+        setDirection("next");
+        goNext();
+      }
     };
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
@@ -99,7 +108,28 @@ export function VideoPlayer() {
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
     };
-  }, [current, goNext]);
+  }, [current, goNext, autoPlayNext]);
+
+  // Track direction and animate in/out
+  useEffect(() => {
+    if (!current) return;
+    const prev = prevVideoRef.current;
+    if (prev && prev.id !== current.id) {
+      const dir = currentIndex > lastIndexRef.current ? "next" : "prev";
+      setOutgoing(prev);
+      setDirection(dir);
+      setAnimating(true);
+      const timer = setTimeout(() => {
+        setOutgoing(null);
+        setAnimating(false);
+      }, 320);
+      lastIndexRef.current = currentIndex;
+      prevVideoRef.current = current;
+      return () => clearTimeout(timer);
+    }
+    prevVideoRef.current = current;
+    lastIndexRef.current = currentIndex;
+  }, [current, currentIndex]);
 
   // Handle Playback Rate & Press Modes
   useEffect(() => {
@@ -113,8 +143,14 @@ export function VideoPlayer() {
     // Vertical scroll -> Next/Prev
     if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > SCROLL_THRESHOLD) {
       event.preventDefault();
-      if (deltaY < 0) goNext(); // Standard scroll down (finger up) -> Next content
-      else goPrev();
+      if (deltaY < 0) {
+         // Scroll down (finger up) -> Next content
+         setDirection("next");
+         goNext(); 
+      } else {
+         setDirection("prev");
+         goPrev();
+      }
       return;
     }
     // Horizontal scroll -> Like/Dislike
@@ -139,7 +175,13 @@ export function VideoPlayer() {
     if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
       dx > 0 ? handleLike() : handleDislike();
     } else if (Math.abs(dy) > SWIPE_THRESHOLD) {
-      dy < 0 ? goNext() : goPrev();
+      if (dy < 0) {
+        setDirection("next");
+        goNext();
+      } else {
+        setDirection("prev");
+        goPrev();
+      }
     }
     touchStart.current = null;
   };
@@ -188,10 +230,12 @@ export function VideoPlayer() {
       switch (e.key) {
         case "ArrowDown":
           e.preventDefault();
+          setDirection("next");
           goNext();
           break;
         case "ArrowUp":
           e.preventDefault();
+          setDirection("prev");
           goPrev();
           break;
         case "ArrowLeft":
@@ -283,15 +327,39 @@ export function VideoPlayer() {
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      <video
-        ref={videoRef}
-        playsInline
-        loop
-        className={cn(
-          "h-full w-full object-contain transition-all duration-500",
-          orientation === "landscape" ? "bg-gradient-to-b from-black/40 to-black/60" : "bg-black"
+      <div className="absolute inset-0 overflow-hidden">
+        {outgoing && (
+          <video
+            key={`out-${outgoing.id}`}
+            ref={outgoingRef}
+            playsInline
+            muted
+            className={cn(
+              "absolute inset-0 h-full w-full object-contain",
+              outgoing.orientation === "landscape"
+                ? "bg-gradient-to-b from-black/40 to-black/60"
+                : "bg-black",
+              direction === "prev" ? "animate-slide-out-down" : "animate-slide-out-up",
+            )}
+            src={outgoing.url}
+          />
         )}
-      />
+        <video
+          key={current.id}
+          ref={videoRef}
+          playsInline
+          loop
+          className={cn(
+            "absolute inset-0 h-full w-full object-contain object-center mx-auto block",
+            orientation === "landscape" ? "bg-gradient-to-b from-black/40 to-black/60" : "bg-black",
+            animating
+              ? direction === "prev"
+                ? "animate-slide-in-down"
+                : "animate-slide-in-up"
+              : "",
+          )}
+        />
+      </div>
 
       {/* Gesture Zones (Invisible) */}
       <div className="absolute inset-0 grid grid-cols-3 z-10">

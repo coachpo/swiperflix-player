@@ -53,3 +53,63 @@ body {
   width: 0;
   height: 0;
 }
+
+@keyframes slide-in-up {
+  from {
+    transform: translateY(40%);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in-down {
+  from {
+    transform: translateY(-40%);
+    opacity: 0.7;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes slide-out-up {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(-35%);
+    opacity: 0;
+  }
+}
+
+@keyframes slide-out-down {
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(35%);
+    opacity: 0;
+  }
+}
+
+.animate-slide-in-up {
+  animation: slide-in-up 0.28s ease-out forwards;
+}
+
+.animate-slide-in-down {
+  animation: slide-in-down 0.28s ease-out forwards;
+}
+
+.animate-slide-out-up {
+  animation: slide-out-up 0.24s ease-in forwards;
+}
+
+.animate-slide-out-down {
+  animation: slide-out-down 0.24s ease-in forwards;
+}
