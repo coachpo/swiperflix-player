@@ -60,7 +60,6 @@ export function VideoPlayer() {
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("portrait");
   const [rotation, setRotation] = useState(0);
   const [outgoingRotation, setOutgoingRotation] = useState(0);
-  const [rotationNoTransition, setRotationNoTransition] = useState(false);
   const [reaction, setReaction] = useState<"liked" | "disliked" | null>(null);
   const [pressMode, setPressMode] = useState<"rewind" | "fast" | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -71,7 +70,6 @@ export function VideoPlayer() {
 
   const pressTimer = useRef<NodeJS.Timeout | null>(null);
   const rewindInterval = useRef<NodeJS.Timeout | null>(null);
-  const rotationNormalizeTimer = useRef<NodeJS.Timeout | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const lastIndexRef = useRef(currentIndex);
   const prevVideoRef = useRef<typeof current>(current);
@@ -140,30 +138,6 @@ export function VideoPlayer() {
   useEffect(() => {
     setRotation(0);
   }, [current?.id]);
-
-  useEffect(() => {
-    if (rotationNormalizeTimer.current) {
-      clearTimeout(rotationNormalizeTimer.current);
-      rotationNormalizeTimer.current = null;
-    }
-    if (Math.abs(rotation) >= 360) {
-      rotationNormalizeTimer.current = setTimeout(() => {
-        setRotationNoTransition(true);
-        setRotation((prev) => {
-          const normalized = prev % 360;
-          return normalized === prev ? prev : normalized;
-        });
-        setTimeout(() => setRotationNoTransition(false), 0);
-        rotationNormalizeTimer.current = null;
-      }, 220);
-    }
-    return () => {
-      if (rotationNormalizeTimer.current) {
-        clearTimeout(rotationNormalizeTimer.current);
-        rotationNormalizeTimer.current = null;
-      }
-    };
-  }, [rotation]);
 
   // Handle Playback Rate & Press Modes
   useEffect(() => {
@@ -382,7 +356,7 @@ export function VideoPlayer() {
             style={{
               transform: `rotate(${outgoingRotation}deg)`,
               transformOrigin: "center center",
-              transition: rotationNoTransition ? "none" : "transform 200ms ease",
+              transition: "transform 200ms ease",
             }}
             src={outgoing.url}
           />
@@ -404,7 +378,7 @@ export function VideoPlayer() {
           style={{
             transform: `rotate(${rotation}deg)`,
             transformOrigin: "center center",
-            transition: rotationNoTransition ? "none" : "transform 200ms ease",
+            transition: "transform 200ms ease",
           }}
         />
       </div>
