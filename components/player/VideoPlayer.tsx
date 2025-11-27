@@ -300,22 +300,7 @@ export function VideoPlayer() {
 
     const hasUsableCache = isUsableCache(video, current.url);
     const needsLoad = !hasUsableCache || (video.dataset.originalUrl ?? video.src) !== current.url;
-    if (needsLoad) {
-      const loadWithAuth = async () => {
-        try {
-          video.preload = "auto";
-          const src = await fetchVideoWithAuth(current.url);
-          if (videoRef.current !== video) return;
-          video.dataset.originalUrl = current.url;
-          video.src = src;
-          video.load();
-        } catch (err) {
-          setIsBuffering(false);
-          console.error(err);
-        }
-      };
-      loadWithAuth();
-    } else if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+    if (!needsLoad && video.readyState >= HTMLMediaElement.HAVE_METADATA) {
       // Preloaded element already has metadata; update UI immediately.
       onLoaded();
     }
@@ -339,6 +324,7 @@ export function VideoPlayer() {
     if (needsLoad) {
       setPendingPlay(true);
       pendingPlayRef.current = true;
+      video.preload = "auto";
       fetchVideoWithAuth(current.url)
         .then((src) => {
           if (videoRef.current !== video) return;
