@@ -28,14 +28,13 @@ import {
 import { cn, formatTime } from "@/lib/utils";
 import { usePlaylist } from "@/providers/playlist-provider";
 import { useToast } from "@/components/ui/use-toast";
+import { useSettings } from "@/providers/settings-provider";
 
 const SCROLL_THRESHOLD = 25;
 const SWIPE_THRESHOLD = 45;
 const LONG_PRESS_DELAY = 250;
 const REWIND_STEP = 0.4;
 const REWIND_INTERVAL = 200;
-const PRELOAD_COUNT = 2;
-
 export function VideoPlayer() {
   const {
     current,
@@ -48,6 +47,7 @@ export function VideoPlayer() {
     dislikeCurrent,
     refresh,
   } = usePlaylist();
+  const { config } = useSettings();
   const { toast } = useToast();
   
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -77,6 +77,19 @@ export function VideoPlayer() {
   const prevVideoRef = useRef<typeof current>(current);
   const preloadAborters = useRef<Array<() => void>>([]);
   const preloadedUrls = useRef<Set<string>>(new Set());
+  const preloadBudget = useMemo(() => {
+    let desired = config.preloadCount ?? 2;
+    if (typeof navigator !== "undefined" && (navigator as any).connection) {
+      const conn = (navigator as any).connection;
+      const type = conn.effectiveType as string | undefined;
+      const saveData = !!conn.saveData;
+      const downlink = typeof conn.downlink === "number" ? conn.downlink : undefined;
+      if (saveData || type === "slow-2g" || type === "2g") desired = 0;
+      else if (type === "3g") desired = Math.min(desired, 1);
+      else if (type === "4g" && typeof downlink === "number" && downlink < 1.5) desired = Math.min(desired, 1);
+    }
+    return Math.max(0, Math.min(5, desired));
+  }, [config.preloadCount]);
 
   // Sync video source for the active video
   useEffect(() => {
@@ -158,8 +171,10 @@ export function VideoPlayer() {
     preloadAborters.current.forEach((stop) => stop());
     preloadAborters.current = [];
 
+    if (preloadBudget <= 0) return;
+
     const urls = videos
-      .slice(currentIndex + 1, currentIndex + 1 + PRELOAD_COUNT)
+      .slice(currentIndex + 1, currentIndex + 1 + preloadBudget)
       .map((v) => v.url)
       .filter(Boolean);
 
@@ -207,7 +222,7 @@ export function VideoPlayer() {
       preloadAborters.current.forEach((stop) => stop());
       preloadAborters.current = [];
     };
-  }, [videos, currentIndex]);
+  }, [videos, currentIndex, preloadBudget]);
 
   useEffect(() => {
     setRotation(0);
@@ -294,7 +309,7 @@ export function VideoPlayer() {
 
   const handleTogglePlay = useCallback(() => {
     const video = videoRef.current;
-    if (!video) return;
+    if (!video || !video.src) return;
     if (video.paused) {
       video.play();
       setIsPlaying(true);
@@ -440,6 +455,7 @@ export function VideoPlayer() {
           ref={videoRef}
           playsInline
           loop
+          src={current.url}
           className={cn(
             "absolute inset-0 h-full w-full object-contain object-center mx-auto block",
             orientation === "landscape" ? "bg-gradient-to-b from-black/40 to-black/60" : "bg-black",

@@ -79,6 +79,26 @@ export function SettingsPanel() {
             If provided, requests include Authorization: Bearer &lt;token&gt;.
           </p>
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="preloadCount">Preload next videos (auto-adjusts on slow networks)</Label>
+          <Input
+            id="preloadCount"
+            type="number"
+            min={0}
+            max={5}
+            step={1}
+            value={draft.preloadCount ?? 2}
+            onChange={(e) =>
+              setDraft((prev) => ({
+                ...prev,
+                preloadCount: Math.max(0, Math.min(5, Number(e.target.value) || 0)),
+              }))
+            }
+          />
+          <p className="text-xs text-muted-foreground">
+            Defaults to 2; may be reduced automatically on slow connections or data saver.
+          </p>
+        </div>
         <div className="flex gap-2">
           <Button onClick={handleSave} className="flex-1">
             Apply

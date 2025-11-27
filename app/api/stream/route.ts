@@ -25,12 +25,17 @@ export async function GET(req: NextRequest) {
   const range = req.headers.get("range");
   if (range) headers.Range = range;
 
+  const controller = new AbortController();
+  const onAbort = () => controller.abort();
+  req.signal.addEventListener("abort", onAbort);
+
   try {
     const upstream = await fetch(upstreamUrl, {
       method: "GET",
       headers,
       redirect: "follow",
       cache: "no-store",
+      signal: controller.signal,
     });
 
     const responseHeaders = new Headers();
@@ -43,8 +48,13 @@ export async function GET(req: NextRequest) {
       status: upstream.status,
       headers: responseHeaders,
     });
-  } catch (error) {
+  } catch (error: any) {
+    if (controller.signal.aborted) {
+      return new NextResponse(null, { status: 499 }); // Client closed request
+    }
     console.error("Stream proxy error", error);
     return NextResponse.json({ error: "Failed to fetch upstream" }, { status: 502 });
+  } finally {
+    req.signal.removeEventListener("abort", onAbort);
   }
 }

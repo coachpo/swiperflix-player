@@ -18,4 +18,5 @@ export type ApiConfig = {
   likePath: string;
   dislikePath: string;
   token?: string;
+  preloadCount?: number;
 };
