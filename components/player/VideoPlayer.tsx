@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   Gauge,
@@ -13,13 +13,14 @@ import {
   Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Slider } from "@/components/ui/slider";
+import { VideoSlider } from "@/components/ui/video-slider";
 import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuLabel,
 } from "@/components/ui/dropdown-menu";
 import { cn, formatTime } from "@/lib/utils";
 import { usePlaylist } from "@/providers/playlist-provider";
@@ -138,7 +139,7 @@ export function VideoPlayer() {
     touchStart.current = null;
   };
 
-  const handleLike = async () => {
+  const handleLike = useCallback(async () => {
     try {
       await likeCurrent();
       setReaction("liked");
@@ -148,9 +149,9 @@ export function VideoPlayer() {
     } finally {
       setTimeout(() => setReaction(null), 900);
     }
-  };
+  }, [likeCurrent, toast]);
 
-  const handleDislike = async () => {
+  const handleDislike = useCallback(async () => {
     try {
       await dislikeCurrent();
       setReaction("disliked");
@@ -160,9 +161,9 @@ export function VideoPlayer() {
     } finally {
       setTimeout(() => setReaction(null), 900);
     }
-  };
+  }, [dislikeCurrent, toast]);
 
-  const handleTogglePlay = () => {
+  const handleTogglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
     if (video.paused) {
@@ -172,7 +173,40 @@ export function VideoPlayer() {
       video.pause();
       setIsPlaying(false);
     }
-  };
+  }, []);
+
+  // Keyboard navigation
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (["INPUT", "TEXTAREA"].includes((e.target as HTMLElement).tagName)) return;
+
+      switch (e.key) {
+        case "ArrowDown":
+          e.preventDefault();
+          goNext();
+          break;
+        case "ArrowUp":
+          e.preventDefault();
+          goPrev();
+          break;
+        case "ArrowLeft":
+          e.preventDefault();
+          handleDislike();
+          break;
+        case "ArrowRight":
+          e.preventDefault();
+          handleLike();
+          break;
+        case " ":
+          e.preventDefault();
+          handleTogglePlay();
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [goNext, goPrev, handleLike, handleDislike, handleTogglePlay]);
 
   const handleSeekCommit = (value: number[]) => {
     const video = videoRef.current;
@@ -278,28 +312,8 @@ export function VideoPlayer() {
       {/* Overlay UI Layer (Pointer events pass through except on buttons) */}
       <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 pb-8">
         
-        {/* Top Right: Speed Control */}
-        <div className="flex justify-end pt-16 pr-2 pointer-events-auto">
-           <DropdownMenu>
-             <DropdownMenuTrigger asChild>
-                <Button size="sm" variant="secondary" className="h-8 gap-1 bg-black/40 backdrop-blur-md hover:bg-black/60 border-white/10 text-white rounded-full px-3 text-xs font-medium">
-                   <Zap className="h-3 w-3 fill-current" />
-                   {playbackRate}x
-                </Button>
-             </DropdownMenuTrigger>
-             <DropdownMenuContent align="end" className="w-20 bg-black/90 border-white/10 text-white">
-               {[0.75, 1, 1.5, 2].map((speed) => (
-                 <DropdownMenuItem 
-                    key={speed} 
-                    onClick={() => setPlaybackRate(speed)}
-                    className="justify-center text-xs focus:bg-white/20 focus:text-white cursor-pointer"
-                 >
-                   {speed}x
-                 </DropdownMenuItem>
-               ))}
-             </DropdownMenuContent>
-           </DropdownMenu>
-        </div>
+        {/* Top Right: Speed Control (Removed) */}
+        <div className="flex justify-end pt-16 pr-2 pointer-events-auto" />
 
         {/* Main HUD Area */}
         <div className="flex items-end gap-4">
@@ -307,20 +321,12 @@ export function VideoPlayer() {
             <div className="flex-1 flex flex-col gap-3 pointer-events-auto pb-2">
                 {/* Metadata */}
                 <div className="space-y-1">
-                   <h2 className="font-semibold text-white drop-shadow-md">{friendlyTitle}</h2>
-                   <div className="flex items-center gap-2 text-xs text-white/70">
-                      <Badge variant="outline" className="border-white/20 bg-white/5 text-white/90 hover:bg-white/10">
-                         {orientation === "landscape" ? "Landscape" : "Portrait"}
-                      </Badge>
-                      <span className="drop-shadow-md">
-                        {currentIndex + 1} / {videos.length}
-                      </span>
-                   </div>
+                  <h2 className="font-semibold text-white drop-shadow-md">{friendlyTitle}</h2>
                 </div>
 
                 {/* Scrub Bar */}
                 <div className="w-full flex items-center gap-3">
-                   <Slider
+                   <VideoSlider
                       value={[isScrubbing ? time : progress]}
                       min={0}
                       max={Math.max(duration, 0.1)}
@@ -330,7 +336,7 @@ export function VideoPlayer() {
                         setTime(v[0]);
                       }}
                       onValueCommit={handleSeekCommit}
-                      className="flex-1 cursor-pointer"
+                      className="flex-1 cursor-pointer h-4 py-2"
                    />
                    <span className="text-[10px] tabular-nums text-white/80 w-16 text-right">
                      {formatTime(progress)} / {formatTime(duration)}
@@ -371,14 +377,34 @@ export function VideoPlayer() {
                    <span className="text-[10px] font-medium text-white shadow-black drop-shadow-md">Dislike</span>
                 </div>
 
-                 {/* More / Options (Placeholder) */}
-                 <Button 
-                    size="icon" 
-                    variant="ghost" 
-                    className="h-10 w-10 rounded-full bg-black/20 hover:bg-black/40 text-white/80"
-                 >
-                    <MoreHorizontal className="h-5 w-5" />
-                 </Button>
+                 {/* More / Options */}
+                 <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                       <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="h-10 w-10 rounded-full bg-black/20 hover:bg-black/40 text-white/80"
+                       >
+                          <MoreHorizontal className="h-5 w-5" />
+                       </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" side="left" className="w-40 bg-black/90 border-white/10 text-white mr-2">
+                       <DropdownMenuLabel className="text-xs text-white/50 uppercase tracking-wider">Playback Speed</DropdownMenuLabel>
+                       {[0.5, 0.75, 1, 1.5, 2, 3].map((speed) => (
+                         <DropdownMenuItem 
+                            key={speed} 
+                            onClick={() => setPlaybackRate(speed)}
+                            className={cn(
+                                "justify-between text-sm focus:bg-white/20 focus:text-white cursor-pointer",
+                                playbackRate === speed && "bg-white/10 text-white"
+                            )}
+                         >
+                           <span>{speed}x</span>
+                           {playbackRate === speed && <Zap className="h-3 w-3 fill-current" />}
+                         </DropdownMenuItem>
+                       ))}
+                    </DropdownMenuContent>
+                 </DropdownMenu>
             </div>
         </div>
 
