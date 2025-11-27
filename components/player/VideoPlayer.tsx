@@ -81,6 +81,7 @@ export function VideoPlayer() {
   const [muted, setMuted] = useState(false);
   const lastVolumeRef = useRef(1);
   const [showDoubleTap, setShowDoubleTap] = useState(false);
+  const [showVolume, setShowVolume] = useState(false);
   const [firstFrameMs, setFirstFrameMs] = useState<number | null>(null);
   const [bufferEvents, setBufferEvents] = useState(0);
 
@@ -846,6 +847,7 @@ export function VideoPlayer() {
 
   const progress = duration ? Math.min(time, duration) : 0;
   const friendlyTitle = useMemo(() => current?.title || `Video ${currentIndex + 1}`, [current, currentIndex]);
+  const showDebugOverlay = config.showDebugOverlay ?? false;
 
   if (!current) {
     return (
@@ -924,6 +926,7 @@ export function VideoPlayer() {
                     variant="ghost"
                     className="h-9 w-9 p-0 bg-white/5 hover:bg-white/10"
                     onClick={() => {
+                      setShowVolume((prev) => !prev);
                       if (muted) {
                         setMuted(false);
                         setVolume(lastVolumeRef.current || 1);
@@ -934,23 +937,30 @@ export function VideoPlayer() {
                   >
                     {muted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
                   </Button>
-                  <div className="flex-1 max-w-[220px]">
-                    <VideoSlider
-                      value={[muted ? 0 : volume]}
-                      min={0}
-                      max={1}
-                      step={0.02}
-                      onValueChange={(v) => {
-                        const val = Math.min(1, Math.max(0, v[0]));
-                        setVolume(val);
-                        lastVolumeRef.current = val || lastVolumeRef.current;
-                        if (val === 0) setMuted(true);
-                        else setMuted(false);
-                      }}
-                      className="h-6"
-                    />
+                  <div
+                    className={cn(
+                      "flex-1 overflow-hidden transition-all duration-200",
+                      showVolume ? "max-w-[220px] opacity-100" : "max-w-0 opacity-0 pointer-events-none",
+                    )}
+                  >
+                    {showVolume && (
+                      <VideoSlider
+                        value={[muted ? 0 : volume]}
+                        min={0}
+                        max={1}
+                        step={0.02}
+                        onValueChange={(v) => {
+                          const val = Math.min(1, Math.max(0, v[0]));
+                          setVolume(val);
+                          lastVolumeRef.current = val || lastVolumeRef.current;
+                          if (val === 0) setMuted(true);
+                          else setMuted(false);
+                        }}
+                        className="h-6"
+                      />
+                    )}
                   </div>
-                  <span className="text-xs tabular-nums">{Math.round((muted ? 0 : volume) * 100)}%</span>
+                  {showVolume && <span className="text-xs tabular-nums">{Math.round((muted ? 0 : volume) * 100)}%</span>}
                 </div>
 
         {/* Full Width Scrub Bar */}
@@ -1106,7 +1116,7 @@ export function VideoPlayer() {
               </div>
            )}
 
-           {(firstFrameMs !== null || bufferEvents > 0) && (
+           {showDebugOverlay && (firstFrameMs !== null || bufferEvents > 0) && (
              <div className="flex flex-col items-center gap-1 text-white/70 text-[10px] bg-black/40 rounded-full px-3 py-1">
                {firstFrameMs !== null && <span>First frame: {Math.round(firstFrameMs)} ms</span>}
                {bufferEvents > 0 && <span>Rebuffers: {bufferEvents}</span>}

@@ -19,4 +19,5 @@ export type ApiConfig = {
   dislikePath: string;
   token?: string;
   preloadCount?: number;
+  showDebugOverlay?: boolean;
 };

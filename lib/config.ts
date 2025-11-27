@@ -6,6 +6,7 @@ export const defaultApiConfig: ApiConfig = {
   likePath: "/api/v1/videos/{id}/like",
   dislikePath: "/api/v1/videos/{id}/dislike",
   preloadCount: 2,
+  showDebugOverlay: false,
 };
 
 export const SETTINGS_STORAGE_KEY = "swiperflix-settings";

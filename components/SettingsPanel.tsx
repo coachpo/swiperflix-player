@@ -99,6 +99,20 @@ export function SettingsPanel() {
             Defaults to 2; may be reduced automatically on slow connections or data saver.
           </p>
         </div>
+        <label className="flex items-center justify-between rounded-lg border border-white/10 bg-white/5 px-3 py-2 cursor-pointer gap-3">
+          <div className="space-y-1">
+            <span className="text-sm font-medium">Show debug overlay</span>
+            <p className="text-xs text-muted-foreground">
+              Enable first-frame and rebuffer counters (for debugging only).
+            </p>
+          </div>
+          <Input
+            type="checkbox"
+            className="h-5 w-5"
+            checked={!!draft.showDebugOverlay}
+            onChange={(e) => setDraft((prev) => ({ ...prev, showDebugOverlay: e.target.checked }))}
+          />
+        </label>
         <div className="flex gap-2">
           <Button onClick={handleSave} className="flex-1">
             Apply
