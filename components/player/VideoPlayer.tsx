@@ -30,6 +30,13 @@ import { usePlaylist } from "@/providers/playlist-provider";
 import { useToast } from "@/components/ui/use-toast";
 import { useSettings } from "@/providers/settings-provider";
 
+const ANIMATION_CLASSES = [
+  "animate-slide-in-up",
+  "animate-slide-in-down",
+  "animate-slide-out-up",
+  "animate-slide-out-down",
+];
+
 const SCROLL_THRESHOLD = 25;
 const SWIPE_THRESHOLD = 45;
 const SWIPE_VELOCITY = 0.6; // px per ms
@@ -88,6 +95,7 @@ export function VideoPlayer() {
   const preloadedEls = useRef<Map<string, HTMLVideoElement>>(new Map());
   const cachedEls = useRef<Map<string, HTMLVideoElement>>(new Map());
   const pendingPlayRef = useRef(false);
+  const isScrubbingRef = useRef(false);
   const userPausedRef = useRef(false);
   const autoPausedRef = useRef(false);
   const retryCounts = useRef<Map<string, number>>(new Map());
@@ -108,13 +116,6 @@ export function VideoPlayer() {
     }
     return Math.max(0, Math.min(5, desired));
   }, [config.preloadCount]);
-
-  const ANIMATION_CLASSES = [
-    "animate-slide-in-up",
-    "animate-slide-in-down",
-    "animate-slide-out-up",
-    "animate-slide-out-down",
-  ];
 
   const applyVideoStyles = useCallback(
     (
@@ -156,6 +157,10 @@ export function VideoPlayer() {
     },
     [animating, direction],
   );
+
+  useEffect(() => {
+    isScrubbingRef.current = isScrubbing;
+  }, [isScrubbing]);
 
   const isUsableCache = useCallback((el: HTMLVideoElement | null | undefined, url: string) => {
     if (!el || !url) return false;
@@ -233,7 +238,7 @@ export function VideoPlayer() {
 
     const onTime = () => {
       setTime(video.currentTime);
-      if (!isScrubbing && current?.id) {
+      if (!isScrubbingRef.current && current?.id) {
         lastProgress.current.set(current.id, video.currentTime);
       }
     };
@@ -247,11 +252,12 @@ export function VideoPlayer() {
       setBuffered(0);
     };
     const onFirstFrame = () => {
-      if (firstFrameMs === null) {
+      setFirstFrameMs((prev) => {
+        if (prev !== null) return prev;
         const start = loadStartRef.current;
         const elapsed = start ? performance.now() - start : performance.now();
-        setFirstFrameMs(elapsed);
-      }
+        return elapsed;
+      });
     };
     const onProgress = () => {
       try {
