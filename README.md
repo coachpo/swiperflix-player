@@ -1,69 +1,84 @@
 # Swiperflix
 
-Gesture-first short‑video player rebuilt with Next.js 16 + shadcn/ui. Scroll, swipe, and long‑press to fly through clips, send like/dislike to your backend, and auto-refresh playlists when they run dry.
+Gesture-first short video player built with Next.js 16, React 19, TypeScript, Tailwind CSS, and shadcn/ui. Scroll, swipe, and long-press through clips while sending like/dislike events to your backend or the included mock API.
 
-## Highlights
-- Scroll/swipe navigation: up → next, down → previous, left → dislike & next, right → like & next.
-- Like/dislike hits your backend and shows an on-player badge + toast.
-- Progress bar seeking, 0.75×/1×/1.5×/2× speed, center tap to pause/resume.
-- Long‑press edges: left third rewinds ~2×, right third fast‑forwards 2×.
-- Auto-refreshes playlist when the current batch is exhausted.
-- Backend base URL and endpoint templates are configurable in-app (persisted locally).
-- Supports portrait and landscape videos with responsive fitting.
-- Mock APIs included (`/api/mock`) so it works out of the box.
+## Features
 
-## Getting Started
+- Wheel or swipe to move: vertical for next/previous, horizontal for like/dislike (dislike also advances).
+- Playback controls: tap to pause/resume, drag progress bar, speeds 0.75/1/1.5/2x, optional auto-play next.
+- Long-press edges: left third rewinds in small steps; right third fast-forwards at 2x.
+- Backend configurable in-app (base URL, playlist/like/dislike paths, optional bearer token) and persisted to localStorage with a reset button.
+- Auto-refreshes the playlist when the current batch ends and prefetches near the tail.
+- Mock playlist API at `/api/mock/playlist` plus bundled demo clips in `public/videos` so it works immediately.
+
+## Tech Stack
+
+- Next.js 16 (App Router) + React 19
+- TypeScript
+- Tailwind CSS + shadcn/ui + Radix primitives
+
+## Quick Start
+
+Prerequisites: Node.js 18.18+ (Node 20 recommended) and pnpm.
+
 ```bash
 pnpm install
 pnpm dev
 ```
-App runs at http://localhost:3000.
 
-### Environment
-- `NEXT_PUBLIC_API_BASE_URL` (optional): overrides the base URL for all API calls. Defaults to `/api/mock`.
+The app runs at http://localhost:3000.
 
-## Backend endpoints (frontend expects)
-- `GET {baseUrl}{playlistPath}?cursor=<cursor>` → `{ items: VideoItem[], nextCursor: string|null }`
+## Configuration
+
+- Environment: `NEXT_PUBLIC_API_BASE_URL` (optional) sets the default backend base URL. Defaults to `/api/mock`.
+- Runtime settings (Settings tab): `baseUrl`, `playlistPath`, `likePath`, `dislikePath`, `token` (Bearer). Changes persist to `localStorage`; Reset restores defaults from `lib/config.ts`.
+- Default paths: `playlistPath=/playlist`, `likePath=/videos/{id}/like`, `dislikePath=/videos/{id}/dislike`.
+
+## Expected Backend Contract
+
+- `GET {baseUrl}{playlistPath}?cursor=<cursor>` -> `{ items: VideoItem[]; nextCursor: string | null }`
 - `POST {baseUrl}{likePath.replace("{id}", id)}`
 - `POST {baseUrl}{dislikePath.replace("{id}", id)}`
+- `VideoItem`: `{ id: string; url: string; cover?: string; title?: string; duration?: number; orientation?: "portrait" | "landscape" }`
 
-`VideoItem`: `{ id: string; url: string; cover?: string; title?: string; duration?: number; orientation?: "portrait"|"landscape" }`
+See `docs/api.md` for a fuller proposal, including pagination notes and an optional impression endpoint.
 
-The Settings panel in the UI lets you edit `baseUrl`, `playlistPath`, `likePath`, `dislikePath` at runtime and saves them to `localStorage`.
+## Mock API for Local Demo
 
-## Gestures & Controls
-- Scroll up/down (or swipe): next / previous video.
-- Scroll left/right (or horizontal swipe): dislike / like, then advance.
-- Long‑press left third: rewind in small steps (~0.4s every 200ms).
-- Long‑press right third: fast‑forward at 2×.
+- `GET /api/mock/playlist` returns a small demo playlist (see `app/api/mock/playlist/route.ts`).
+- Demo clips live in `public/videos`; swap them or point the app to your own backend via the Settings tab or `NEXT_PUBLIC_API_BASE_URL`.
+
+## Gestures and Controls
+
+- Scroll or swipe up/down: next / previous video.
+- Scroll or swipe left/right: like / dislike, then advance.
+- Long-press left third: rewind in ~0.4s steps.
+- Long-press right third: fast-forward at 2x.
 - Tap center: pause/resume. Buttons for play/pause and navigation are also available.
-- Drag progress bar to seek; change playback speed via selector.
-
-## Mock API (for local demo)
-- `GET /api/mock/playlist`
-- `POST /api/mock/videos/:id/like`
-- `POST /api/mock/videos/:id/dislike`
-
-Edit `app/api/mock/...` or point the app to a real backend via Settings or `NEXT_PUBLIC_API_BASE_URL`.
+- Drag the progress bar to seek; choose playback speed from the dropdown.
 
 ## Project Structure
-- `app/` – App Router pages and route handlers (mock API).
-- `components/` – Player, settings panel, and shadcn/ui primitives.
-- `providers/` – React contexts: playlist state and backend settings.
-- `lib/` – Types, API client, config helpers, utilities.
-- `public/` – Demo videos and assets.
+
+- `app/` - App Router entry, styles, PWA manifest, mock API route.
+- `components/` - Player, settings panel, and shared UI primitives.
+- `providers/` - React contexts for playlist state and backend settings.
+- `lib/` - Types, config helpers, and API client.
+- `public/` - Demo videos and static assets.
+- `docs/api.md` - Proposed backend contract.
 
 ## Scripts
-- `pnpm dev` – start dev server
-- `pnpm build` – production build (Turbopack)
-- `pnpm start` – run built app
-- `pnpm lint` – eslint
 
-## Roadmap ideas
-1. Persist like/dislike state locally to avoid duplicate sends.
-2. Offline fallback playlist and better error surfaces.
-3. Optional telemetry endpoint for impressions / watch completion.
-4. Theming toggle (light/dark) and accessibility passes for gestures.
+- `pnpm dev` - start dev server
+- `pnpm build` - production build
+- `pnpm start` - serve built app
+- `pnpm lint` - run eslint with max-warnings=0
+
+## Deployment
+
+1. Configure `NEXT_PUBLIC_API_BASE_URL` (or rely on `/api/mock`).
+2. `pnpm install && pnpm build`
+3. `pnpm start` to serve the built output.
 
 ## License
-MIT
+
+MIT — see `LICENSE`.

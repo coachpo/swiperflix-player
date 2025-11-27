@@ -402,7 +402,7 @@ export function VideoPlayer() {
 
         {/* Full Width Scrub Bar */}
         <div 
-          className="w-full pointer-events-auto absolute bottom-8 left-0 z-30 px-8"
+          className="w-full pointer-events-auto absolute bottom-8 left-0 z-10 px-8 pr-24 sm:pr-32"
           onTouchStart={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
@@ -417,13 +417,13 @@ export function VideoPlayer() {
                 setTime(v[0]);
               }}
               onValueCommit={handleSeekCommit}
-              className="cursor-pointer h-8 w-full"
+              className="cursor-pointer h-6 w-full"
            />
         </div>
             </div>
 
             {/* Right Action Bar (Vertical Stack) */}
-            <div className="flex flex-col gap-4 pointer-events-auto items-center pb-6">
+            <div className="flex flex-col gap-4 pointer-events-auto items-center pb-10">
                 {/* Profile / Follow placeholder (optional, kept simple) */}
                 
                 {/* Like */}
