@@ -17,6 +17,8 @@ export type ApiConfig = {
   playlistPath: string;
   likePath: string;
   dislikePath: string;
+  impressionPath: string;
+  notPlayablePath: string;
   token?: string;
   preloadCount?: number;
   showDebugOverlay?: boolean;

@@ -43,7 +43,8 @@ const SWIPE_VELOCITY = 0.6; // px per ms
 const LONG_PRESS_DELAY = 250;
 const REWIND_STEP = 0.4;
 const REWIND_INTERVAL = 200;
-const CACHE_LIMIT = 8;
+const CACHE_LIMIT = 12;
+const PRELOAD_CONCURRENCY = 2;
 export function VideoPlayer() {
   const {
     current,
@@ -103,18 +104,10 @@ export function VideoPlayer() {
   const loadStartRef = useRef<number | null>(null);
   const videoHostRef = useRef<HTMLDivElement | null>(null);
   const outgoingHostRef = useRef<HTMLDivElement | null>(null);
+  // Always honor the requested preload count; skip connection-based throttling.
   const preloadBudget = useMemo(() => {
-    let desired = config.preloadCount ?? 2;
-    if (typeof navigator !== "undefined" && (navigator as any).connection) {
-      const conn = (navigator as any).connection;
-      const type = conn.effectiveType as string | undefined;
-      const saveData = !!conn.saveData;
-      const downlink = typeof conn.downlink === "number" ? conn.downlink : undefined;
-      if (saveData || type === "slow-2g" || type === "2g") desired = 0;
-      else if (type === "3g") desired = Math.min(desired, 1);
-      else if (type === "4g" && typeof downlink === "number" && downlink < 1.5) desired = Math.min(desired, 1);
-    }
-    return Math.max(0, Math.min(5, desired));
+    const desired = config.preloadCount ?? 2;
+    return Math.max(0, desired);
   }, [config.preloadCount]);
 
   const applyVideoStyles = useCallback(
@@ -228,6 +221,11 @@ export function VideoPlayer() {
     }
 
     const video = fromPreload ?? document.createElement("video");
+    try {
+      (video as any).fetchPriority = "high";
+    } catch {
+      // ignore unsupported browsers
+    }
     videoRef.current = video;
     setActiveEl(video);
 
@@ -402,7 +400,7 @@ export function VideoPlayer() {
     lastIndexRef.current = currentIndex;
   }, [current, currentIndex, rotation, activeEl]);
 
-  // Preload next few videos sequentially (up to PRELOAD_COUNT)
+  // Preload next few videos with small concurrency (up to PRELOAD_COUNT)
   useEffect(() => {
     if (videos.length === 0) return;
 
@@ -425,54 +423,83 @@ export function VideoPlayer() {
       }
     });
 
-    const preloadSequential = async () => {
-      for (const url of urls) {
-        if (preloadedUrls.current.has(url) || preloadControllers.current.has(url)) continue;
+    const queue = [...urls];
 
-        const controller = new AbortController();
-        preloadControllers.current.set(url, controller);
+    const preloadOne = async (url: string) => {
+      if (preloadedUrls.current.has(url) || preloadControllers.current.has(url)) return;
 
-        const videoEl = document.createElement("video");
-        videoEl.preload = "auto";
-        videoEl.playsInline = true;
-        videoEl.loop = true;
-        videoEl.src = url;
-        preloadedEls.current.set(url, videoEl);
+      const controller = new AbortController();
+      preloadControllers.current.set(url, controller);
 
-        await new Promise<void>((resolve) => {
-          const cleanup = () => {
-            videoEl.removeEventListener("canplaythrough", onReady);
-            videoEl.removeEventListener("loadeddata", onReady);
-            videoEl.removeEventListener("error", onError);
-            preloadControllers.current.delete(url);
-            if (controller.signal.aborted) {
-              preloadedEls.current.delete(url);
-            }
-          };
-          const onReady = () => {
-            cleanup();
-            preloadedUrls.current.add(url);
-            cacheVideoElement(url, videoEl);
-            resolve();
-          };
-          const onError = () => {
-            cleanup();
-            resolve();
-          };
-          videoEl.addEventListener("canplaythrough", onReady, { once: true });
-          videoEl.addEventListener("loadeddata", onReady, { once: true });
-          videoEl.addEventListener("error", onError, { once: true });
-          videoEl.load();
-        });
+      const videoEl = document.createElement("video");
+      videoEl.preload = "auto";
+      videoEl.playsInline = true;
+      videoEl.loop = true;
+      (videoEl as any).fetchPriority = "low";
+      videoEl.src = url;
+      preloadedEls.current.set(url, videoEl);
+
+      await new Promise<void>((resolve) => {
+        const cleanup = () => {
+          videoEl.removeEventListener("canplaythrough", onReady);
+          videoEl.removeEventListener("loadeddata", onReady);
+          videoEl.removeEventListener("error", onError);
+          preloadControllers.current.delete(url);
+          if (controller.signal.aborted) {
+            preloadedEls.current.delete(url);
+          }
+        };
+        const onReady = () => {
+          cleanup();
+          preloadedUrls.current.add(url);
+          cacheVideoElement(url, videoEl);
+          resolve();
+        };
+        const onError = () => {
+          cleanup();
+          resolve();
+        };
+        videoEl.addEventListener("canplaythrough", onReady, { once: true });
+        videoEl.addEventListener("loadeddata", onReady, { once: true });
+        videoEl.addEventListener("error", onError, { once: true });
+        videoEl.load();
+      });
+    };
+
+    const worker = async () => {
+      while (queue.length) {
+        const url = queue.shift();
+        if (!url) break;
+        await preloadOne(url);
       }
     };
 
-    preloadSequential();
+    const workers = Array.from({ length: Math.min(PRELOAD_CONCURRENCY, queue.length) }, worker);
+    void Promise.all(workers);
 
     return () => {
       // Do not abort in-flight on index change to preserve benefit; cleanup happens on unmount below.
     };
   }, [videos, currentIndex, preloadBudget, cacheVideoElement]);
+
+  // Hint the browser to start fetching the imminent next video earlier
+  useEffect(() => {
+    const nextUrl = videos[currentIndex + 1]?.url || current?.url;
+    if (!nextUrl) return;
+    const link = document.createElement("link");
+    link.rel = "preload";
+    link.as = "video";
+    link.href = nextUrl;
+    try {
+      (link as any).fetchPriority = "high";
+    } catch {
+      // ignore
+    }
+    document.head.appendChild(link);
+    return () => {
+      if (link.parentNode) link.parentNode.removeChild(link);
+    };
+  }, [current?.url, currentIndex, videos]);
 
   useEffect(() => {
     const controllers = preloadControllers.current;

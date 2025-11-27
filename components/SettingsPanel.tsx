@@ -65,6 +65,24 @@ export function SettingsPanel() {
               placeholder="/api/v1/videos/{id}/dislike"
             />
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="impressionPath">Impression path</Label>
+            <Input
+              id="impressionPath"
+              value={draft.impressionPath}
+              onChange={(e) => setDraft((prev) => ({ ...prev, impressionPath: e.target.value }))}
+              placeholder="/api/v1/videos/{id}/impression"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="notPlayablePath">Not-playable path</Label>
+            <Input
+              id="notPlayablePath"
+              value={draft.notPlayablePath}
+              onChange={(e) => setDraft((prev) => ({ ...prev, notPlayablePath: e.target.value }))}
+              placeholder="/api/v1/videos/{id}/not-playable"
+            />
+          </div>
         </div>
         <div className="space-y-2">
           <Label htmlFor="token">Bearer token (optional)</Label>

@@ -5,7 +5,9 @@ export const defaultApiConfig: ApiConfig = {
   playlistPath: "/api/v1/playlist",
   likePath: "/api/v1/videos/{id}/like",
   dislikePath: "/api/v1/videos/{id}/dislike",
-  preloadCount: 2,
+  impressionPath: "/api/v1/videos/{id}/impression",
+  notPlayablePath: "/api/v1/videos/{id}/not-playable",
+  preloadCount: 3,
   showDebugOverlay: false,
 };
 
