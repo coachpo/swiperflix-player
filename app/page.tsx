@@ -18,7 +18,7 @@ export default function Home() {
       <PlaylistProvider>
         <main className="relative h-[100dvh] w-full overflow-hidden bg-black text-white">
           {/* Top Navigation */}
-          <header className="absolute top-0 left-0 z-50 flex w-full items-center justify-center gap-6 pt-8 pb-4 bg-gradient-to-b from-black/60 to-transparent pointer-events-none">
+          <header className="absolute top-0 left-0 z-50 flex w-full items-center justify-center gap-6 pt-8 pb-4 pointer-events-none">
             <div className="pointer-events-auto flex gap-6">
               <button
                 onClick={() => setActiveTab("player")}
