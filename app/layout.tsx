@@ -7,6 +7,16 @@ const inter = Inter({ subsets: ["latin"] });
 export const metadata: Metadata = {
   title: "Swiperflix",
   description: "Gesture-first short video player rebuilt with Next.js",
+  manifest: "/manifest.webmanifest",
+  icons: {
+    icon: "/icon.svg",
+    shortcut: "/icon.svg",
+    apple: "/icon.svg",
+  },
+};
+
+export const viewport = {
+  themeColor: "#0ea5e9",
 };
 
 export default function RootLayout({
