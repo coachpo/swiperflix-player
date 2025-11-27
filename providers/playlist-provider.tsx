@@ -101,8 +101,8 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
     const video = videos[currentIndex];
     if (!video) return;
     await sendReaction(config, video.id, "like");
-    goNext();
-  }, [config, currentIndex, goNext, videos]);
+    // Stay on current video, do not goNext()
+  }, [config, currentIndex, videos]);
 
   const dislikeCurrent = useCallback(async () => {
     const video = videos[currentIndex];

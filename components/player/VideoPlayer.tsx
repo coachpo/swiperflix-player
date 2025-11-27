@@ -21,6 +21,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuCheckboxItem,
 } from "@/components/ui/dropdown-menu";
 import { cn, formatTime } from "@/lib/utils";
 import { usePlaylist } from "@/providers/playlist-provider";
@@ -57,6 +59,7 @@ export function VideoPlayer() {
   const [reaction, setReaction] = useState<"liked" | "disliked" | null>(null);
   const [pressMode, setPressMode] = useState<"rewind" | "fast" | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [autoPlayNext, setAutoPlayNext] = useState(true);
 
   const pressTimer = useRef<NodeJS.Timeout | null>(null);
   const rewindInterval = useRef<NodeJS.Timeout | null>(null);
@@ -73,7 +76,9 @@ export function VideoPlayer() {
       setOrientation(video.videoWidth >= video.videoHeight ? "landscape" : "portrait");
       setTime(0);
     };
-    const onEnded = () => goNext();
+    const onEnded = () => {
+      if (autoPlayNext) goNext();
+    };
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
 
@@ -143,7 +148,7 @@ export function VideoPlayer() {
     try {
       await likeCurrent();
       setReaction("liked");
-      toast({ title: "Liked", description: "Saved to favorites" });
+      toast({ title: "Liked", description: "Like this video" });
     } catch {
       toast({ title: "Error", description: "Failed to like video" });
     } finally {
@@ -155,7 +160,7 @@ export function VideoPlayer() {
     try {
       await dislikeCurrent();
       setReaction("disliked");
-      toast({ title: "Disliked", description: "We'll show less of this" });
+      toast({ title: "Disliked", description: "Dislike this video" });
     } catch {
       toast({ title: "Error", description: "Failed to process dislike" });
     } finally {
@@ -388,8 +393,20 @@ export function VideoPlayer() {
                           <MoreHorizontal className="h-5 w-5" />
                        </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" side="left" className="w-40 bg-black/90 border-white/10 text-white mr-2">
-                       <DropdownMenuLabel className="text-xs text-white/50 uppercase tracking-wider">Playback Speed</DropdownMenuLabel>
+                    <DropdownMenuContent align="end" side="left" className="w-56 bg-black/90 border-white/10 text-white mr-2">
+                       <DropdownMenuLabel className="text-xs text-white/50 uppercase tracking-wider">Playback Settings</DropdownMenuLabel>
+                       
+                       <DropdownMenuCheckboxItem
+                          checked={autoPlayNext}
+                          onCheckedChange={setAutoPlayNext}
+                          className="text-sm focus:bg-white/20 focus:text-white cursor-pointer data-[state=checked]:bg-white/10"
+                       >
+                          Auto-play next video
+                       </DropdownMenuCheckboxItem>
+                       
+                       <DropdownMenuSeparator className="bg-white/10" />
+                       
+                       <DropdownMenuLabel className="text-xs text-white/50 uppercase tracking-wider mt-1">Speed</DropdownMenuLabel>
                        {[0.5, 0.75, 1, 1.5, 2, 3].map((speed) => (
                          <DropdownMenuItem 
                             key={speed} 
