@@ -34,6 +34,8 @@ body {
     radial-gradient(circle at 80% 0%, rgba(255, 99, 164, 0.12), transparent 25%),
     hsl(222.2 84% 4.9%);
   color: hsl(var(--foreground));
+  overscroll-behavior: none;
+  overflow: hidden;
 }
 
 .glass {

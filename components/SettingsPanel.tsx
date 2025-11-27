@@ -37,7 +37,7 @@ export function SettingsPanel() {
             placeholder="https://api.example.com"
           />
         </div>
-        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4">
           <div className="space-y-2">
             <Label htmlFor="playlistPath">Playlist path</Label>
             <Input

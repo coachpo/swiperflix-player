@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
-  Gauge,
   Pause,
   Play,
   RefreshCcw,
@@ -274,11 +273,8 @@ export function VideoPlayer() {
 
           {/* HUD */}
           <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4">
-            <div className="flex items-center justify-between text-xs uppercase tracking-[0.2em] text-white/70">
+            <div className="text-xs uppercase tracking-[0.2em] text-white/70">
               <span className="glass rounded-full px-3 py-1 text-[10px]">{friendlyTitle}</span>
-              <span className="glass rounded-full px-3 py-1 text-[10px]">
-                {currentIndex + 1}/{videos.length || "…"}
-              </span>
             </div>
 
             <div className="flex flex-col gap-2">
@@ -295,10 +291,6 @@ export function VideoPlayer() {
               />
               <div className="flex items-center justify-between text-xs text-white/70">
                 <div className="flex items-center gap-3">
-                  <Badge variant="secondary" className="glass">
-                    <Gauge className="mr-1 h-3 w-3" />
-                    {orientation === "landscape" ? "Landscape" : "Portrait"}
-                  </Badge>
                   {pressMode === "fast" && (
                     <Badge variant="success" className="glass animate-pulse">
                       <Zap className="mr-1 h-3 w-3" />

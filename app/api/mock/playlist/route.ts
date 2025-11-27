@@ -17,8 +17,14 @@ const demoPlaylist: PlaylistResponse = {
     },
     {
       id: "demo-3",
+      title: "City night ride",
+      url: "/videos/年年如意.mp4",
+      orientation: "landscape",
+    },
+    {
+      id: "demo-4",
       title: "Dance loop",
-      url: "/videos/浅跳一下.mp4",
+      url: "/videos/年年如意.mp4",
       orientation: "portrait",
     },
   ],

@@ -68,25 +68,30 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       const nearEnd = targetIndex >= videos.length - 1;
-      if (nearEnd) {
-        if (cursor !== null) {
-          void loadMore();
-        } else if (!loadingMore) {
-          // playlist exhausted — request a new one
-          void bootstrap();
-        }
+      if (nearEnd && cursor !== null) {
+        // Prefetch next batch while user watches the tail of current list.
+        void loadMore();
       }
     },
-    [videos.length, bootstrap, cursor, loadMore, loadingMore],
+    [videos.length, bootstrap, cursor, loadMore],
   );
 
   const goNext = useCallback(() => {
     setCurrentIndex((idx) => {
-      const nextIndex = Math.min(idx + 1, Math.max(videos.length - 1, 0));
+      const nextIndex = idx + 1;
+      if (nextIndex >= videos.length) {
+        // Already at the end. Trigger refresh / load-more but keep showing last item until new data arrives.
+        if (cursor !== null) {
+          void loadMore();
+        } else {
+          void bootstrap();
+        }
+        return idx;
+      }
       ensureFuture(nextIndex);
       return nextIndex;
     });
-  }, [ensureFuture, videos.length]);
+  }, [ensureFuture, videos.length, cursor, loadMore, bootstrap]);
 
   const goPrev = useCallback(() => {
     setCurrentIndex((idx) => Math.max(idx - 1, 0));
