@@ -431,11 +431,13 @@ export function VideoPlayer() {
   useEffect(() => {
     const host = videoHostRef.current;
     if (!host || !activeEl) return;
+    if (!host.contains(activeEl)) {
+      host.innerHTML = "";
+      host.appendChild(activeEl);
+    }
     applyVideoStyles(activeEl, { outgoing: false, orientationOverride: orientation });
     applyHostAnimation(host, { outgoing: false });
-    host.innerHTML = "";
-    host.appendChild(activeEl);
-  }, [activeEl, applyVideoStyles, applyHostAnimation, orientation, rotation]);
+  }, [activeEl, applyVideoStyles, applyHostAnimation, orientation, rotation, animating, direction]);
 
   useEffect(() => {
     const host = outgoingHostRef.current;
@@ -448,8 +450,10 @@ export function VideoPlayer() {
     const orient = outgoing?.orientation ?? orientation;
     applyVideoStyles(outgoingEl, { outgoing: true, orientationOverride: orient });
     applyHostAnimation(host, { outgoing: true });
-    host.innerHTML = "";
-    host.appendChild(outgoingEl);
+    if (!host.contains(outgoingEl)) {
+      host.innerHTML = "";
+      host.appendChild(outgoingEl);
+    }
   }, [
     outgoingEl,
     applyVideoStyles,
@@ -457,6 +461,8 @@ export function VideoPlayer() {
     outgoing?.orientation,
     orientation,
     outgoingRotation,
+    animating,
+    direction,
   ]);
 
   // Handle Playback Rate & Press Modes

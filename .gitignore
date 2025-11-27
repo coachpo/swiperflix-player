@@ -31,3 +31,4 @@ dist
 # IDE 
 .vscode/
 .idea/
+.git
