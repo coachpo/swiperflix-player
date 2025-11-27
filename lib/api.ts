@@ -17,12 +17,13 @@ function resolveMediaUrl(url: string, config: ApiConfig) {
     target = new URL(url, baseUrl);
   }
 
-  const shouldProxy = !!config.token && sameOrigin(target, baseUrl);
+  const isStreamPath = target.pathname.startsWith("/api/v1/videos/") && target.pathname.endsWith("/stream");
+  const shouldProxy = !!config.token && isStreamPath && sameOrigin(target, baseUrl);
   if (!shouldProxy) return target.href;
 
   const proxyOrigin = typeof window === "undefined" ? "http://localhost:3000" : window.location.origin;
-  const proxy = new URL("/api/stream", proxyOrigin);
-  proxy.searchParams.set("url", target.href);
+  const proxy = new URL(target.pathname, proxyOrigin);
+  proxy.search = target.search;
   proxy.searchParams.set("token", config.token!);
   return proxy.href;
 }
