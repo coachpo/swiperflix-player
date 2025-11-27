@@ -278,7 +278,7 @@ export function VideoPlayer() {
   return (
     <div
       ref={containerRef}
-      className="relative h-full w-full overflow-hidden bg-black"
+      className="relative h-full w-full overflow-hidden bg-black select-none touch-none"
       onWheel={handleWheel}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
@@ -296,21 +296,24 @@ export function VideoPlayer() {
       {/* Gesture Zones (Invisible) */}
       <div className="absolute inset-0 grid grid-cols-3 z-10">
         <div
-          className="h-full w-full"
+          className="h-full w-full touch-none select-none"
           onPointerDown={() => startPress("rewind")}
           onPointerUp={endPress}
           onPointerLeave={endPress}
+          onContextMenu={(e) => e.preventDefault()}
         />
         <div
-          className="h-full w-full"
+          className="h-full w-full touch-none select-none"
           onClick={handleTogglePlay}
           onPointerDown={endPress} // cancel existing press
+          onContextMenu={(e) => e.preventDefault()}
         />
         <div
-          className="h-full w-full"
+          className="h-full w-full touch-none select-none"
           onPointerDown={() => startPress("fast")}
           onPointerUp={endPress}
           onPointerLeave={endPress}
+          onContextMenu={(e) => e.preventDefault()}
         />
       </div>
 
