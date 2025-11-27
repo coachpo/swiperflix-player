@@ -6,7 +6,7 @@ import { Toast, ToastDescription, ToastProvider, ToastTitle, ToastViewport } fro
 export function Toaster() {
   const { toasts, dismiss } = useToast();
   return (
-    <ToastProvider>
+    <ToastProvider swipeDirection="down" duration={2000}>
       {toasts.map(function ({ id, title, description, action, ...props }) {
         return (
           <Toast key={id} {...props} onOpenChange={(open) => !open && dismiss(id)}>
