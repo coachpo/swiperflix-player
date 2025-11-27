@@ -3,6 +3,27 @@ import { resolveEndpoint } from "./config";
 
 const DEFAULT_TIMEOUT = 10_000;
 
+function resolveMediaUrl(url: string, config: ApiConfig) {
+  // If the URL is already absolute, return it untouched.
+  try {
+    return new URL(url).href;
+  } catch {
+    // fall through
+  }
+
+  // If baseUrl is absolute, use it as the base for relative media URLs.
+  if (/^https?:\/\//i.test(config.baseUrl)) {
+    try {
+      return new URL(url, config.baseUrl).href;
+    } catch {
+      // fall through
+    }
+  }
+
+  // Fallback: return the original string to avoid breaking existing relative setups.
+  return url;
+}
+
 async function withTimeout<T>(promise: Promise<T>, ms = DEFAULT_TIMEOUT) {
   let timer: NodeJS.Timeout;
   const timeout = new Promise<never>((_, reject) => {
@@ -37,7 +58,14 @@ async function requestJson<T>(url: string, init: RequestInit = {}, config?: ApiC
 export async function fetchPlaylist(config: ApiConfig, cursor?: string | null) {
   const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
   const url = `${config.baseUrl}${config.playlistPath}${qs}`;
-  return requestJson<PlaylistResponse>(url, {}, config);
+  const resp = await requestJson<PlaylistResponse>(url, {}, config);
+  return {
+    ...resp,
+    items: (resp.items || []).map((item) => ({
+      ...item,
+      url: resolveMediaUrl(item.url, config),
+    })),
+  };
 }
 
 export async function sendReaction(config: ApiConfig, id: string, action: "like" | "dislike") {
