@@ -23,7 +23,7 @@ export default function Home() {
               <button
                 onClick={() => setActiveTab("player")}
                 className={cn(
-                  "text-base font-medium transition-all drop-shadow-md",
+                  "text-base font-medium transition-all drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]",
                   activeTab === "player" 
                     ? "text-white scale-110 font-semibold" 
                     : "text-white/60 hover:text-white/80"
@@ -35,7 +35,7 @@ export default function Home() {
               <button
                 onClick={() => setActiveTab("settings")}
                 className={cn(
-                  "text-base font-medium transition-all drop-shadow-md",
+                  "text-base font-medium transition-all drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]",
                   activeTab === "settings" 
                     ? "text-white scale-110 font-semibold" 
                     : "text-white/60 hover:text-white/80"
