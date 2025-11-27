@@ -453,12 +453,12 @@ export function VideoPlayer() {
                    <Button 
                       size="icon" 
                       variant="ghost" 
-                      className="h-12 w-12 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 text-white transition-all active:scale-90"
+                      className="h-12 w-12 p-0 bg-transparent hover:bg-transparent text-white transition-all active:scale-90 shadow-none"
                       onClick={handleRotate}
                    >
-                      <RotateCw className="h-6 w-6" />
+                      <RotateCw className="h-6 w-6 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]" />
                    </Button>
-                   <span className="text-[10px] font-medium text-white shadow-black drop-shadow-md">Rotate</span>
+                   <span className="text-[10px] font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">Rotate</span>
                 </div>
 
                 {/* Like */}
@@ -467,14 +467,14 @@ export function VideoPlayer() {
                       size="icon" 
                       variant="ghost" 
                       className={cn(
-                        "h-12 w-12 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 text-white transition-all active:scale-90",
-                        reaction === 'liked' && "text-red-500 bg-white/10"
+                        "h-12 w-12 p-0 bg-transparent hover:bg-transparent text-white transition-all active:scale-90 shadow-none",
+                        reaction === 'liked' && "text-red-500"
                       )}
                       onClick={handleLike}
                    >
-                      <Heart className={cn("h-6 w-6", reaction === 'liked' && "fill-current")} />
+                      <Heart className={cn("h-6 w-6 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]", reaction === 'liked' && "fill-current")} />
                    </Button>
-                   <span className="text-[10px] font-medium text-white shadow-black drop-shadow-md">Like</span>
+                   <span className="text-[10px] font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">Like</span>
                 </div>
 
                 {/* Dislike */}
@@ -482,12 +482,12 @@ export function VideoPlayer() {
                    <Button 
                       size="icon" 
                       variant="ghost" 
-                      className="h-12 w-12 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 text-white transition-all active:scale-90"
+                      className="h-12 w-12 p-0 bg-transparent hover:bg-transparent text-white transition-all active:scale-90 shadow-none"
                       onClick={handleDislike}
                    >
-                      <HeartCrack className="h-6 w-6" />
+                      <HeartCrack className="h-6 w-6 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]" />
                    </Button>
-                   <span className="text-[10px] font-medium text-white shadow-black drop-shadow-md">Dislike</span>
+                   <span className="text-[10px] font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]">Dislike</span>
                 </div>
 
                  {/* More / Options */}
@@ -496,9 +496,9 @@ export function VideoPlayer() {
                        <Button 
                           size="icon" 
                           variant="ghost" 
-                          className="h-10 w-10 rounded-full bg-black/20 hover:bg-black/40 text-white/80"
+                          className="h-10 w-10 p-0 bg-transparent hover:bg-transparent text-white/80 shadow-none"
                        >
-                          <MoreHorizontal className="h-5 w-5" />
+                          <MoreHorizontal className="h-5 w-5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]" />
                        </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" side="left" className="w-56 bg-black/90 border-white/10 text-white mr-2">
