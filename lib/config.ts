@@ -1,10 +1,10 @@
 import { ApiConfig } from "./types";
 
 export const defaultApiConfig: ApiConfig = {
-  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "/api/mock",
-  playlistPath: "/playlist",
-  likePath: "/videos/{id}/like",
-  dislikePath: "/videos/{id}/dislike",
+  baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:8000",
+  playlistPath: "/api/v1/playlist",
+  likePath: "/api/v1/videos/{id}/like",
+  dislikePath: "/api/v1/videos/{id}/dislike",
 };
 
 export const SETTINGS_STORAGE_KEY = "swiperflix-settings";

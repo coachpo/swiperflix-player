@@ -34,4 +34,4 @@
 ## Prohibited Actions
 - Do not use `useEffect` for data fetching if `useSWR` or React Query concepts can be applied (though this project uses custom `fetch` in providers, stick to that pattern).
 - Do not introduce new heavy UI libraries; stick to shadcn/ui and Tailwind.
-- Do not modify `api/mock` unless the backend logic requires changes to support frontend features.
+ - Keep API integration pointed at the real backend; avoid reintroducing mock routes.

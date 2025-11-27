@@ -34,7 +34,7 @@ export function SettingsPanel() {
             id="baseUrl"
             value={draft.baseUrl}
             onChange={(e) => setDraft((prev) => ({ ...prev, baseUrl: e.target.value }))}
-            placeholder="https://api.example.com"
+            placeholder="http://localhost:8000"
           />
         </div>
         <div className="grid grid-cols-1 gap-4">
@@ -44,7 +44,7 @@ export function SettingsPanel() {
               id="playlistPath"
               value={draft.playlistPath}
               onChange={(e) => setDraft((prev) => ({ ...prev, playlistPath: e.target.value }))}
-              placeholder="/playlist"
+              placeholder="/api/v1/playlist"
             />
           </div>
           <div className="space-y-2">
@@ -53,7 +53,7 @@ export function SettingsPanel() {
               id="likePath"
               value={draft.likePath}
               onChange={(e) => setDraft((prev) => ({ ...prev, likePath: e.target.value }))}
-              placeholder="/videos/{id}/like"
+              placeholder="/api/v1/videos/{id}/like"
             />
           </div>
           <div className="space-y-2">
@@ -62,7 +62,7 @@ export function SettingsPanel() {
               id="dislikePath"
               value={draft.dislikePath}
               onChange={(e) => setDraft((prev) => ({ ...prev, dislikePath: e.target.value }))}
-              placeholder="/videos/{id}/dislike"
+              placeholder="/api/v1/videos/{id}/dislike"
             />
           </div>
         </div>

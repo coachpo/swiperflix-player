@@ -1,6 +1,6 @@
 # Swiperflix
 
-Gesture-first short video player built with Next.js 16, React 19, TypeScript, Tailwind CSS, and shadcn/ui. Scroll, swipe, and long-press through clips while sending like/dislike events to your backend or the included mock API.
+Gesture-first short video player built with Next.js 16, React 19, TypeScript, Tailwind CSS, and shadcn/ui. Scroll, swipe, and long-press through clips while sending like/dislike events to your backend.
 
 ## Features
 
@@ -9,7 +9,6 @@ Gesture-first short video player built with Next.js 16, React 19, TypeScript, Ta
 - Long-press edges: left third rewinds in small steps; right third fast-forwards at 2x.
 - Backend configurable in-app (base URL, playlist/like/dislike paths, optional bearer token) and persisted to localStorage with a reset button.
 - Auto-refreshes the playlist when the current batch ends and prefetches near the tail.
-- Mock playlist API at `/api/mock/playlist` plus bundled demo clips in `public/videos` so it works immediately.
 
 ## Tech Stack
 
@@ -27,12 +26,13 @@ pnpm dev
 ```
 
 The app runs at http://localhost:3000.
+Ensure your backend API is reachable at http://localhost:8000 (matching the defaults) or update the Settings tab.
 
 ## Configuration
 
-- Environment: `NEXT_PUBLIC_API_BASE_URL` (optional) sets the default backend base URL. Defaults to `/api/mock`.
+- Environment: `NEXT_PUBLIC_API_BASE_URL` (optional) sets the default backend base URL. Defaults to `http://localhost:8000`.
 - Runtime settings (Settings tab): `baseUrl`, `playlistPath`, `likePath`, `dislikePath`, `token` (Bearer). Changes persist to `localStorage`; Reset restores defaults from `lib/config.ts`.
-- Default paths: `playlistPath=/playlist`, `likePath=/videos/{id}/like`, `dislikePath=/videos/{id}/dislike`.
+- Default paths: `baseUrl=http://localhost:8000`, `playlistPath=/api/v1/playlist`, `likePath=/api/v1/videos/{id}/like`, `dislikePath=/api/v1/videos/{id}/dislike`.
 
 ## Expected Backend Contract
 
@@ -42,11 +42,6 @@ The app runs at http://localhost:3000.
 - `VideoItem`: `{ id: string; url: string; cover?: string; title?: string; duration?: number; orientation?: "portrait" | "landscape" }`
 
 See `docs/api.md` for a fuller proposal, including pagination notes and an optional impression endpoint.
-
-## Mock API for Local Demo
-
-- `GET /api/mock/playlist` returns a small demo playlist (see `app/api/mock/playlist/route.ts`).
-- Demo clips live in `public/videos`; swap them or point the app to your own backend via the Settings tab or `NEXT_PUBLIC_API_BASE_URL`.
 
 ## Gestures and Controls
 
@@ -59,11 +54,11 @@ See `docs/api.md` for a fuller proposal, including pagination notes and an optio
 
 ## Project Structure
 
-- `app/` - App Router entry, styles, PWA manifest, mock API route.
+- `app/` - App Router entry, styles, PWA manifest.
 - `components/` - Player, settings panel, and shared UI primitives.
 - `providers/` - React contexts for playlist state and backend settings.
 - `lib/` - Types, config helpers, and API client.
-- `public/` - Demo videos and static assets.
+- `public/` - Static assets.
 - `docs/api.md` - Proposed backend contract.
 
 ## Scripts
@@ -75,7 +70,7 @@ See `docs/api.md` for a fuller proposal, including pagination notes and an optio
 
 ## Deployment
 
-1. Configure `NEXT_PUBLIC_API_BASE_URL` (or rely on `/api/mock`).
+1. Configure `NEXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:8000`).
 2. `pnpm install && pnpm build`
 3. `pnpm start` to serve the built output.
 

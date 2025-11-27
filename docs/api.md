@@ -112,9 +112,9 @@ Example:
 ```
 
 ## Config mapping in the frontend
-- `baseUrl`: defaults to `/api/mock`
-- `playlistPath`: defaults to `/playlist`
-- `likePath`: `/videos/{id}/like`
-- `dislikePath`: `/videos/{id}/dislike`
+- `baseUrl`: defaults to `http://localhost:8000`
+- `playlistPath`: defaults to `/api/v1/playlist`
+- `likePath`: `/api/v1/videos/{id}/like`
+- `dislikePath`: `/api/v1/videos/{id}/dislike`
 
 Users can override these at runtime via the Settings panel (persisted to `localStorage`) or by setting `NEXT_PUBLIC_API_BASE_URL`.
