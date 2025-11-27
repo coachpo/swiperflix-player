@@ -7,7 +7,7 @@ export const defaultApiConfig: ApiConfig = {
   dislikePath: "/videos/{id}/dislike",
 };
 
-export const SETTINGS_STORAGE_KEY = "douyin-player-settings";
+export const SETTINGS_STORAGE_KEY = "swiperflix-settings";
 
 export function hydrateConfig(): ApiConfig {
   if (typeof window === "undefined") return defaultApiConfig;
