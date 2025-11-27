@@ -7,18 +7,25 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
+import { ApiConfig } from "@/lib/types";
 
 export function SettingsPanel() {
   const { config, updateConfig, reset } = useSettings();
   const { toast } = useToast();
-  const [draft, setDraft] = useState(config);
+  const applyLoadingTokenDefault = (cfg: ApiConfig) => ({
+    ...cfg,
+    loadingVideoToken: cfg.loadingVideoToken ?? cfg.token,
+  });
+
+  const [draft, setDraft] = useState<ApiConfig>(() => applyLoadingTokenDefault(config));
 
   useEffect(() => {
-    setDraft(config);
+    setDraft(applyLoadingTokenDefault(config));
   }, [config]);
 
   const handleSave = () => {
-    updateConfig(draft);
+    const normalized = applyLoadingTokenDefault(draft);
+    updateConfig(normalized);
     toast({ title: "Settings saved", description: "Backend endpoints updated." });
   };
 
@@ -77,6 +84,19 @@ export function SettingsPanel() {
           />
           <p className="text-xs text-muted-foreground">
             If provided, requests include Authorization: Bearer &lt;token&gt;.
+          </p>
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="loadingVideoToken">Loading video token (optional)</Label>
+          <Input
+            id="loadingVideoToken"
+            type="password"
+            value={draft.loadingVideoToken ?? draft.token ?? ""}
+            onChange={(e) => setDraft((prev) => ({ ...prev, loadingVideoToken: e.target.value }))}
+            placeholder="Uses bearer token when left blank"
+          />
+          <p className="text-xs text-muted-foreground">
+            Applied to loading video requests; defaults to the bearer token unless you specify another token.
           </p>
         </div>
         <div className="space-y-2">

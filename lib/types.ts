@@ -18,5 +18,6 @@ export type ApiConfig = {
   likePath: string;
   dislikePath: string;
   token?: string;
+  loadingVideoToken?: string;
   preloadCount?: number;
 };
