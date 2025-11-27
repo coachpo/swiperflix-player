@@ -5,7 +5,7 @@ import "./globals.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "Douyin Slider Player",
+  title: "Swiperflix",
   description: "Gesture-first short video player rebuilt with Next.js",
 };
 
