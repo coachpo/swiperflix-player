@@ -33,6 +33,7 @@ Ensure your backend API is reachable at http://localhost:8000 (matching the defa
 - Environment: `NEXT_PUBLIC_API_BASE_URL` (optional) sets the default backend base URL. Defaults to `http://localhost:8000`.
 - Runtime settings (Settings tab): `baseUrl`, `playlistPath`, `likePath`, `dislikePath`, `token` (Bearer). Changes persist to `localStorage`; Reset restores defaults from `lib/config.ts`.
 - Default paths: `baseUrl=http://localhost:8000`, `playlistPath=/api/v1/playlist`, `likePath=/api/v1/videos/{id}/like`, `dislikePath=/api/v1/videos/{id}/dislike`.
+- Streaming auth: when a token is set, video URLs that are relative or match the base URL are routed through `/api/stream` so the backend receives `Authorization: Bearer <token>`; external origins remain direct.
 
 ## Expected Backend Contract
 

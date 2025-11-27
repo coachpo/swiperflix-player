@@ -3,25 +3,28 @@ import { resolveEndpoint } from "./config";
 
 const DEFAULT_TIMEOUT = 10_000;
 
+function sameOrigin(target: URL, base: URL) {
+  return target.protocol === base.protocol && target.host === base.host;
+}
+
 function resolveMediaUrl(url: string, config: ApiConfig) {
-  // If the URL is already absolute, return it untouched.
+  const baseUrl = new URL(config.baseUrl, config.baseUrl.startsWith("http") ? undefined : "http://localhost");
+
+  let target: URL;
   try {
-    return new URL(url).href;
+    target = new URL(url);
   } catch {
-    // fall through
+    target = new URL(url, baseUrl);
   }
 
-  // If baseUrl is absolute, use it as the base for relative media URLs.
-  if (/^https?:\/\//i.test(config.baseUrl)) {
-    try {
-      return new URL(url, config.baseUrl).href;
-    } catch {
-      // fall through
-    }
-  }
+  const shouldProxy = !!config.token && sameOrigin(target, baseUrl);
+  if (!shouldProxy) return target.href;
 
-  // Fallback: return the original string to avoid breaking existing relative setups.
-  return url;
+  const proxyOrigin = typeof window === "undefined" ? "http://localhost:3000" : window.location.origin;
+  const proxy = new URL("/api/stream", proxyOrigin);
+  proxy.searchParams.set("url", target.href);
+  proxy.searchParams.set("token", config.token!);
+  return proxy.href;
 }
 
 async function withTimeout<T>(promise: Promise<T>, ms = DEFAULT_TIMEOUT) {
