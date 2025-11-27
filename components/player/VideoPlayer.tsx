@@ -75,7 +75,7 @@ export function VideoPlayer() {
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const lastIndexRef = useRef(currentIndex);
   const prevVideoRef = useRef<typeof current>(current);
-  const preloadAborters = useRef<Array<() => void>>([]);
+  const preloadControllers = useRef<Map<string, AbortController>>(new Map());
   const preloadedUrls = useRef<Set<string>>(new Set());
   const preloadBudget = useMemo(() => {
     let desired = config.preloadCount ?? 2;
@@ -168,9 +168,6 @@ export function VideoPlayer() {
 
   // Preload next few videos sequentially (up to PRELOAD_COUNT)
   useEffect(() => {
-    preloadAborters.current.forEach((stop) => stop());
-    preloadAborters.current = [];
-
     if (preloadBudget <= 0) return;
 
     const urls = videos
@@ -178,25 +175,23 @@ export function VideoPlayer() {
       .map((v) => v.url)
       .filter(Boolean);
 
-    let aborted = false;
-
     const preloadSequential = async () => {
       for (const url of urls) {
-        if (aborted || preloadedUrls.current.has(url)) continue;
+        if (preloadedUrls.current.has(url) || preloadControllers.current.has(url)) continue;
+
+        const controller = new AbortController();
+        preloadControllers.current.set(url, controller);
+
         const videoEl = document.createElement("video");
         videoEl.preload = "auto";
         videoEl.src = url;
-
-        const abort = () => {
-          videoEl.src = "";
-        };
-        preloadAborters.current.push(abort);
 
         await new Promise<void>((resolve) => {
           const cleanup = () => {
             videoEl.removeEventListener("canplaythrough", onReady);
             videoEl.removeEventListener("loadeddata", onReady);
             videoEl.removeEventListener("error", onError);
+            preloadControllers.current.delete(url);
           };
           const onReady = () => {
             cleanup();
@@ -218,11 +213,16 @@ export function VideoPlayer() {
     preloadSequential();
 
     return () => {
-      aborted = true;
-      preloadAborters.current.forEach((stop) => stop());
-      preloadAborters.current = [];
+      // Do not abort in-flight on index change to preserve benefit; cleanup happens on unmount below.
     };
   }, [videos, currentIndex, preloadBudget]);
+
+  useEffect(() => {
+    return () => {
+      preloadControllers.current.forEach((controller) => controller.abort());
+      preloadControllers.current.clear();
+    };
+  }, []);
 
   useEffect(() => {
     setRotation(0);
