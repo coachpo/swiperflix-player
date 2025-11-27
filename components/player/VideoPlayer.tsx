@@ -34,6 +34,7 @@ const SWIPE_THRESHOLD = 45;
 const LONG_PRESS_DELAY = 250;
 const REWIND_STEP = 0.4;
 const REWIND_INTERVAL = 200;
+const PRELOAD_COUNT = 2;
 
 export function VideoPlayer() {
   const {
@@ -67,23 +68,29 @@ export function VideoPlayer() {
   const [direction, setDirection] = useState<"next" | "prev" | null>(null);
   const [outgoing, setOutgoing] = useState<typeof current | null>(null);
   const [animating, setAnimating] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
 
   const pressTimer = useRef<NodeJS.Timeout | null>(null);
   const rewindInterval = useRef<NodeJS.Timeout | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const lastIndexRef = useRef(currentIndex);
   const prevVideoRef = useRef<typeof current>(current);
+  const preloadAborters = useRef<Array<() => void>>([]);
+  const preloadedUrls = useRef<Set<string>>(new Set());
 
   // Sync video source for the active video
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !current) return;
 
+    setIsBuffering(true);
+
     const onTime = () => setTime(video.currentTime);
     const onLoaded = () => {
       setDuration(video.duration || 0);
       setOrientation(video.videoWidth >= video.videoHeight ? "landscape" : "portrait");
       setTime(0);
+      setIsBuffering(false);
     };
     const onEnded = () => {
       if (autoPlayNext) {
@@ -93,16 +100,24 @@ export function VideoPlayer() {
     };
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
+    const onWaiting = () => setIsBuffering(true);
+    const onCanPlay = () => setIsBuffering(false);
 
     video.addEventListener("timeupdate", onTime);
     video.addEventListener("loadedmetadata", onLoaded);
     video.addEventListener("ended", onEnded);
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
+    video.addEventListener("waiting", onWaiting);
+    video.addEventListener("canplay", onCanPlay);
+    video.addEventListener("canplaythrough", onCanPlay);
 
     video.src = current.url;
     video.load();
-    video.play().catch(() => setIsPlaying(false));
+    video
+      .play()
+      .then(() => setIsBuffering(false))
+      .catch(() => setIsPlaying(false));
 
     return () => {
       video.removeEventListener("timeupdate", onTime);
@@ -110,6 +125,9 @@ export function VideoPlayer() {
       video.removeEventListener("ended", onEnded);
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
+      video.removeEventListener("waiting", onWaiting);
+      video.removeEventListener("canplay", onCanPlay);
+      video.removeEventListener("canplaythrough", onCanPlay);
     };
   }, [current, goNext, autoPlayNext]);
 
@@ -134,6 +152,62 @@ export function VideoPlayer() {
     prevVideoRef.current = current;
     lastIndexRef.current = currentIndex;
   }, [current, currentIndex, rotation]);
+
+  // Preload next few videos sequentially (up to PRELOAD_COUNT)
+  useEffect(() => {
+    preloadAborters.current.forEach((stop) => stop());
+    preloadAborters.current = [];
+
+    const urls = videos
+      .slice(currentIndex + 1, currentIndex + 1 + PRELOAD_COUNT)
+      .map((v) => v.url)
+      .filter(Boolean);
+
+    let aborted = false;
+
+    const preloadSequential = async () => {
+      for (const url of urls) {
+        if (aborted || preloadedUrls.current.has(url)) continue;
+        const videoEl = document.createElement("video");
+        videoEl.preload = "auto";
+        videoEl.src = url;
+
+        const abort = () => {
+          videoEl.src = "";
+        };
+        preloadAborters.current.push(abort);
+
+        await new Promise<void>((resolve) => {
+          const cleanup = () => {
+            videoEl.removeEventListener("canplaythrough", onReady);
+            videoEl.removeEventListener("loadeddata", onReady);
+            videoEl.removeEventListener("error", onError);
+          };
+          const onReady = () => {
+            cleanup();
+            preloadedUrls.current.add(url);
+            resolve();
+          };
+          const onError = () => {
+            cleanup();
+            resolve();
+          };
+          videoEl.addEventListener("canplaythrough", onReady, { once: true });
+          videoEl.addEventListener("loadeddata", onReady, { once: true });
+          videoEl.addEventListener("error", onError, { once: true });
+          videoEl.load();
+        });
+      }
+    };
+
+    preloadSequential();
+
+    return () => {
+      aborted = true;
+      preloadAborters.current.forEach((stop) => stop());
+      preloadAborters.current = [];
+    };
+  }, [videos, currentIndex]);
 
   useEffect(() => {
     setRotation(0);
@@ -535,6 +609,12 @@ export function VideoPlayer() {
 
         {/* Central Status Badges (Toast-like overlays) */}
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex flex-col gap-2 items-center">
+           {isBuffering && (
+              <div className="flex flex-col items-center gap-3 bg-black/50 px-5 py-4 rounded-2xl backdrop-blur-sm animate-in fade-in">
+                <div className="h-8 w-8 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                <span className="text-xs uppercase tracking-[0.2em] text-white/80">Loading</span>
+              </div>
+           )}
            {!isPlaying && !loading && (
               <div className="bg-black/40 rounded-full p-4 backdrop-blur-sm animate-in fade-in zoom-in duration-200">
                  <Play className="h-8 w-8 text-white/90 fill-white/90" />
