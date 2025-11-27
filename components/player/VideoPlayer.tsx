@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  RotateCw,
   Gauge,
   Heart,
   HeartCrack,
@@ -57,6 +58,9 @@ export function VideoPlayer() {
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
   const [orientation, setOrientation] = useState<"portrait" | "landscape">("portrait");
+  const [rotation, setRotation] = useState(0);
+  const [outgoingRotation, setOutgoingRotation] = useState(0);
+  const [rotationNoTransition, setRotationNoTransition] = useState(false);
   const [reaction, setReaction] = useState<"liked" | "disliked" | null>(null);
   const [pressMode, setPressMode] = useState<"rewind" | "fast" | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
@@ -67,6 +71,7 @@ export function VideoPlayer() {
 
   const pressTimer = useRef<NodeJS.Timeout | null>(null);
   const rewindInterval = useRef<NodeJS.Timeout | null>(null);
+  const rotationNormalizeTimer = useRef<NodeJS.Timeout | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const lastIndexRef = useRef(currentIndex);
   const prevVideoRef = useRef<typeof current>(current);
@@ -117,6 +122,7 @@ export function VideoPlayer() {
     if (prev && prev.id !== current.id) {
       const dir = currentIndex > lastIndexRef.current ? "next" : "prev";
       setOutgoing(prev);
+      setOutgoingRotation(rotation);
       setDirection(dir);
       setAnimating(true);
       const timer = setTimeout(() => {
@@ -129,7 +135,35 @@ export function VideoPlayer() {
     }
     prevVideoRef.current = current;
     lastIndexRef.current = currentIndex;
-  }, [current, currentIndex]);
+  }, [current, currentIndex, rotation]);
+
+  useEffect(() => {
+    setRotation(0);
+  }, [current?.id]);
+
+  useEffect(() => {
+    if (rotationNormalizeTimer.current) {
+      clearTimeout(rotationNormalizeTimer.current);
+      rotationNormalizeTimer.current = null;
+    }
+    if (Math.abs(rotation) >= 360) {
+      rotationNormalizeTimer.current = setTimeout(() => {
+        setRotationNoTransition(true);
+        setRotation((prev) => {
+          const normalized = prev % 360;
+          return normalized === prev ? prev : normalized;
+        });
+        setTimeout(() => setRotationNoTransition(false), 0);
+        rotationNormalizeTimer.current = null;
+      }, 220);
+    }
+    return () => {
+      if (rotationNormalizeTimer.current) {
+        clearTimeout(rotationNormalizeTimer.current);
+        rotationNormalizeTimer.current = null;
+      }
+    };
+  }, [rotation]);
 
   // Handle Playback Rate & Press Modes
   useEffect(() => {
@@ -257,6 +291,10 @@ export function VideoPlayer() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [goNext, goPrev, handleLike, handleDislike, handleTogglePlay]);
 
+  const handleRotate = () => {
+    setRotation((prev) => prev + 90);
+  };
+
   const handleSeekCommit = (value: number[]) => {
     const video = videoRef.current;
     if (!video) return;
@@ -341,6 +379,11 @@ export function VideoPlayer() {
                 : "bg-black",
               direction === "prev" ? "animate-slide-out-down" : "animate-slide-out-up",
             )}
+            style={{
+              transform: `rotate(${outgoingRotation}deg)`,
+              transformOrigin: "center center",
+              transition: rotationNoTransition ? "none" : "transform 200ms ease",
+            }}
             src={outgoing.url}
           />
         )}
@@ -358,6 +401,11 @@ export function VideoPlayer() {
                 : "animate-slide-in-up"
               : "",
           )}
+          style={{
+            transform: `rotate(${rotation}deg)`,
+            transformOrigin: "center center",
+            transition: rotationNoTransition ? "none" : "transform 200ms ease",
+          }}
         />
       </div>
 
@@ -426,6 +474,19 @@ export function VideoPlayer() {
             <div className="flex flex-col gap-4 pointer-events-auto items-center pb-10">
                 {/* Profile / Follow placeholder (optional, kept simple) */}
                 
+                {/* Like */}
+                <div className="flex flex-col items-center gap-1">
+                   <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      className="h-12 w-12 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 text-white transition-all active:scale-90"
+                      onClick={handleRotate}
+                   >
+                      <RotateCw className="h-6 w-6" />
+                   </Button>
+                   <span className="text-[10px] font-medium text-white shadow-black drop-shadow-md">Rotate</span>
+                </div>
+
                 {/* Like */}
                 <div className="flex flex-col items-center gap-1">
                    <Button 
