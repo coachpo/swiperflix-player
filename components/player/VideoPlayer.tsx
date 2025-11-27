@@ -200,20 +200,36 @@ export function VideoPlayer() {
   );
 
   const fetchVideoWithAuth = useCallback(
-    async (url: string) => {
-      if (!config.loadingVideoToken) {
-        throw new Error("Missing loadingVideoToken");
+    async (rawUrl: string) => {
+      const token = config.loadingVideoToken?.trim();
+
+      // Always proxy when a token is present to avoid CORS/preflight failures on remote media hosts.
+      // The proxy adds the Bearer prefix itself; we pass the bare token via query string.
+      let target: URL;
+      try {
+        target = new URL(rawUrl);
+      } catch {
+        target = new URL(rawUrl, config.baseUrl);
       }
-      const resp = await fetch(url, { headers: { Authorization: config.loadingVideoToken } });
+
+      const proxiedUrl = token
+        ? `/api/stream?${new URLSearchParams({
+            url: target.href,
+            token: token.startsWith("Bearer ") ? token.slice(7) : token,
+          }).toString()}`
+        : target.href;
+
+      const resp = await fetch(proxiedUrl);
       if (!resp.ok) throw new Error(`Video request failed (${resp.status})`);
+
       const blob = await resp.blob();
       const objectUrl = URL.createObjectURL(blob);
-      const existing = objectUrlMap.current.get(url);
+      const existing = objectUrlMap.current.get(rawUrl);
       if (existing) URL.revokeObjectURL(existing);
-      objectUrlMap.current.set(url, objectUrl);
+      objectUrlMap.current.set(rawUrl, objectUrl);
       return objectUrl;
     },
-    [config.loadingVideoToken],
+    [config.baseUrl, config.loadingVideoToken],
   );
 
   // Sync video source for the active video, reusing preloaded element when available
