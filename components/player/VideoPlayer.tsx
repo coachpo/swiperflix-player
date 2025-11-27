@@ -3,19 +3,24 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
-  ArrowRight,
-  Pause,
+  Gauge,
+  Heart,
+  HeartCrack,
+  MoreHorizontal,
   Play,
-  RefreshCcw,
-  ThumbsDown,
-  ThumbsUp,
+  Pause,
   Zap,
+  Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Card, CardContent } from "@/components/ui/card";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { cn, formatTime } from "@/lib/utils";
 import { usePlaylist } from "@/providers/playlist-provider";
 import { useToast } from "@/components/ui/use-toast";
@@ -23,8 +28,8 @@ import { useToast } from "@/components/ui/use-toast";
 const SCROLL_THRESHOLD = 25;
 const SWIPE_THRESHOLD = 45;
 const LONG_PRESS_DELAY = 250;
-const REWIND_STEP = 0.4; // seconds per tick
-const REWIND_INTERVAL = 200; // ms
+const REWIND_STEP = 0.4;
+const REWIND_INTERVAL = 200;
 
 export function VideoPlayer() {
   const {
@@ -32,7 +37,6 @@ export function VideoPlayer() {
     currentIndex,
     videos,
     loading,
-    error,
     goNext,
     goPrev,
     likeCurrent,
@@ -40,6 +44,7 @@ export function VideoPlayer() {
     refresh,
   } = usePlaylist();
   const { toast } = useToast();
+  
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -56,7 +61,7 @@ export function VideoPlayer() {
   const rewindInterval = useRef<NodeJS.Timeout | null>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
 
-  // Load / reset video whenever the current item changes
+  // Sync video source
   useEffect(() => {
     const video = videoRef.current;
     if (!video || !current) return;
@@ -90,6 +95,7 @@ export function VideoPlayer() {
     };
   }, [current, goNext]);
 
+  // Handle Playback Rate & Press Modes
   useEffect(() => {
     if (videoRef.current) {
       videoRef.current.playbackRate = pressMode === "fast" ? 2 : playbackRate;
@@ -98,12 +104,14 @@ export function VideoPlayer() {
 
   const handleWheel = (event: React.WheelEvent) => {
     const { deltaX, deltaY } = event;
+    // Vertical scroll -> Next/Prev
     if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > SCROLL_THRESHOLD) {
       event.preventDefault();
-      if (deltaY < 0) goNext();
+      if (deltaY < 0) goNext(); // Standard scroll down (finger up) -> Next content
       else goPrev();
       return;
     }
+    // Horizontal scroll -> Like/Dislike
     if (Math.abs(deltaX) > SCROLL_THRESHOLD) {
       event.preventDefault();
       if (deltaX > 0) handleLike();
@@ -134,9 +142,9 @@ export function VideoPlayer() {
     try {
       await likeCurrent();
       setReaction("liked");
-      toast({ title: "Liked", description: "Sent to backend." });
-    } catch (err) {
-      toast({ title: "Failed to like", description: err instanceof Error ? err.message : "Unknown error" });
+      toast({ title: "Liked", description: "Saved to favorites" });
+    } catch {
+      toast({ title: "Error", description: "Failed to like video" });
     } finally {
       setTimeout(() => setReaction(null), 900);
     }
@@ -146,9 +154,9 @@ export function VideoPlayer() {
     try {
       await dislikeCurrent();
       setReaction("disliked");
-      toast({ title: "Disliked", description: "Sent to backend." });
-    } catch (err) {
-      toast({ title: "Failed to dislike", description: err instanceof Error ? err.message : "Unknown error" });
+      toast({ title: "Disliked", description: "We'll show less of this" });
+    } catch {
+      toast({ title: "Error", description: "Failed to process dislike" });
     } finally {
       setTimeout(() => setReaction(null), 900);
     }
@@ -169,21 +177,21 @@ export function VideoPlayer() {
   const handleSeekCommit = (value: number[]) => {
     const video = videoRef.current;
     if (!video) return;
-    const nextTime = value[0];
-    video.currentTime = nextTime;
-    setTime(nextTime);
+    video.currentTime = value[0];
+    setTime(value[0]);
     setIsScrubbing(false);
   };
 
   const startPress = (mode: "rewind" | "fast") => {
     if (pressTimer.current) clearTimeout(pressTimer.current);
     if (rewindInterval.current) clearInterval(rewindInterval.current);
+    
     pressTimer.current = setTimeout(() => {
       setPressMode(mode);
       if (mode === "fast") {
         if (videoRef.current) {
           videoRef.current.playbackRate = 2;
-          void videoRef.current.play().catch(() => undefined);
+          videoRef.current.play().catch(() => {});
         }
       } else {
         rewindInterval.current = setInterval(() => {
@@ -198,8 +206,10 @@ export function VideoPlayer() {
   const endPress = () => {
     if (pressTimer.current) clearTimeout(pressTimer.current);
     if (rewindInterval.current) clearInterval(rewindInterval.current);
+    
     pressTimer.current = null;
     rewindInterval.current = null;
+    
     if (videoRef.current) {
       videoRef.current.playbackRate = playbackRate;
     }
@@ -207,23 +217,21 @@ export function VideoPlayer() {
   };
 
   const progress = duration ? Math.min(time, duration) : 0;
-  const friendlyTitle = useMemo(() => current?.title || `Video ${currentIndex + 1}`, [current?.title, currentIndex]);
+  const friendlyTitle = useMemo(() => current?.title || `Video ${currentIndex + 1}`, [current, currentIndex]);
 
   if (!current) {
     return (
-      <div className="grid gap-4 md:grid-cols-[1fr,320px]">
-        <div className="aspect-[9/16] w-full animate-pulse rounded-3xl bg-white/5" />
-        <Card className="glass border-white/10 bg-white/5">
-          <CardContent className="space-y-3 pt-6">
-            <p className="text-sm text-muted-foreground">
-              {loading ? "Loading playlist…" : "No videos available. Check backend settings and reload."}
-            </p>
-            <Button onClick={refresh} variant="secondary" className="w-full">
-              <RefreshCcw className="mr-2 h-4 w-4" />
+      <div className="flex h-full w-full items-center justify-center bg-black text-white">
+        <div className="text-center">
+          <p className="mb-4 text-muted-foreground">
+            {loading ? "Loading playlist..." : "No videos available"}
+          </p>
+          {!loading && (
+            <Button onClick={refresh} variant="secondary">
               Reload
             </Button>
-          </CardContent>
-        </Card>
+          )}
+        </div>
       </div>
     );
   }
@@ -231,174 +239,171 @@ export function VideoPlayer() {
   return (
     <div
       ref={containerRef}
-      className="relative flex h-full w-full flex-col gap-4"
+      className="relative h-full w-full overflow-hidden bg-black"
       onWheel={handleWheel}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      <div className="grid gap-4 md:grid-cols-[1fr,320px]">
-        <div className="relative aspect-[9/16] w-full overflow-hidden rounded-3xl border border-white/10 bg-black/70 video-shadow">
-          <video
-            ref={videoRef}
-            playsInline
-            className={cn(
-              "h-full w-full object-contain transition-all duration-500",
-              orientation === "landscape" ? "bg-gradient-to-b from-black/40 to-black/60" : "bg-black",
-            )}
-          />
+      <video
+        ref={videoRef}
+        playsInline
+        loop
+        className={cn(
+          "h-full w-full object-contain transition-all duration-500",
+          orientation === "landscape" ? "bg-gradient-to-b from-black/40 to-black/60" : "bg-black"
+        )}
+      />
 
-          {/* Overlay controls zones */}
-          <div className="absolute inset-0 grid grid-cols-3">
-            <button
-              aria-label="rewind"
-              className="h-full w-full"
-              onPointerDown={() => startPress("rewind")}
-              onPointerUp={endPress}
-              onPointerLeave={endPress}
-            />
-            <button
-              aria-label="toggle"
-              className="h-full w-full"
-              onClick={handleTogglePlay}
-              onPointerDown={endPress}
-            />
-            <button
-              aria-label="fast-forward"
-              className="h-full w-full"
-              onPointerDown={() => startPress("fast")}
-              onPointerUp={endPress}
-              onPointerLeave={endPress}
-            />
-          </div>
+      {/* Gesture Zones (Invisible) */}
+      <div className="absolute inset-0 grid grid-cols-3 z-10">
+        <div
+          className="h-full w-full"
+          onPointerDown={() => startPress("rewind")}
+          onPointerUp={endPress}
+          onPointerLeave={endPress}
+        />
+        <div
+          className="h-full w-full"
+          onClick={handleTogglePlay}
+          onPointerDown={endPress} // cancel existing press
+        />
+        <div
+          className="h-full w-full"
+          onPointerDown={() => startPress("fast")}
+          onPointerUp={endPress}
+          onPointerLeave={endPress}
+        />
+      </div>
 
-          {/* HUD */}
-          <div className="pointer-events-none absolute inset-0 flex flex-col justify-between p-4">
-            <div className="text-xs uppercase tracking-[0.2em] text-white/70">
-              <span className="glass rounded-full px-3 py-1 text-[10px]">{friendlyTitle}</span>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Slider
-                value={[isScrubbing ? time : progress]}
-                min={0}
-                max={Math.max(duration, time + 0.1)}
-                step={0.05}
-                onValueChange={(v) => {
-                  setIsScrubbing(true);
-                  setTime(v[0]);
-                }}
-                onValueCommit={handleSeekCommit}
-              />
-              <div className="flex items-center justify-between text-xs text-white/70">
-                <div className="flex items-center gap-3">
-                  {pressMode === "fast" && (
-                    <Badge variant="success" className="glass animate-pulse">
-                      <Zap className="mr-1 h-3 w-3" />
-                      2x Fast
-                    </Badge>
-                  )}
-                  {pressMode === "rewind" && (
-                    <Badge variant="danger" className="glass animate-pulse">
-                      <ArrowLeft className="mr-1 h-3 w-3" />
-                      Rewinding
-                    </Badge>
-                  )}
-                  {reaction === "liked" && (
-                    <Badge variant="success" className="glass">
-                      <ThumbsUp className="mr-1 h-3 w-3" />
-                      Liked
-                    </Badge>
-                  )}
-                  {reaction === "disliked" && (
-                    <Badge variant="danger" className="glass">
-                      <ThumbsDown className="mr-1 h-3 w-3" />
-                      Disliked
-                    </Badge>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 text-right tabular-nums">
-                  <span>{formatTime(progress)}</span>
-                  <span className="opacity-60">/</span>
-                  <span>{formatTime(duration)}</span>
-                </div>
-              </div>
-            </div>
-          </div>
+      {/* Overlay UI Layer (Pointer events pass through except on buttons) */}
+      <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 pb-8">
+        
+        {/* Top Right: Speed Control */}
+        <div className="flex justify-end pt-16 pr-2 pointer-events-auto">
+           <DropdownMenu>
+             <DropdownMenuTrigger asChild>
+                <Button size="sm" variant="secondary" className="h-8 gap-1 bg-black/40 backdrop-blur-md hover:bg-black/60 border-white/10 text-white rounded-full px-3 text-xs font-medium">
+                   <Zap className="h-3 w-3 fill-current" />
+                   {playbackRate}x
+                </Button>
+             </DropdownMenuTrigger>
+             <DropdownMenuContent align="end" className="w-20 bg-black/90 border-white/10 text-white">
+               {[0.75, 1, 1.5, 2].map((speed) => (
+                 <DropdownMenuItem 
+                    key={speed} 
+                    onClick={() => setPlaybackRate(speed)}
+                    className="justify-center text-xs focus:bg-white/20 focus:text-white cursor-pointer"
+                 >
+                   {speed}x
+                 </DropdownMenuItem>
+               ))}
+             </DropdownMenuContent>
+           </DropdownMenu>
         </div>
 
-        <Card className="glass border-white/10 bg-white/5">
-          <CardContent className="space-y-4 pt-6">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs uppercase tracking-[0.2em] text-muted-foreground">Playback</p>
-                <p className="text-lg font-semibold">{friendlyTitle}</p>
+        {/* Main HUD Area */}
+        <div className="flex items-end gap-4">
+            {/* Bottom Info & Progress */}
+            <div className="flex-1 flex flex-col gap-3 pointer-events-auto pb-2">
+                {/* Metadata */}
+                <div className="space-y-1">
+                   <h2 className="font-semibold text-white drop-shadow-md">{friendlyTitle}</h2>
+                   <div className="flex items-center gap-2 text-xs text-white/70">
+                      <Badge variant="outline" className="border-white/20 bg-white/5 text-white/90 hover:bg-white/10">
+                         {orientation === "landscape" ? "Landscape" : "Portrait"}
+                      </Badge>
+                      <span className="drop-shadow-md">
+                        {currentIndex + 1} / {videos.length}
+                      </span>
+                   </div>
+                </div>
+
+                {/* Scrub Bar */}
+                <div className="w-full flex items-center gap-3">
+                   <Slider
+                      value={[isScrubbing ? time : progress]}
+                      min={0}
+                      max={Math.max(duration, 0.1)}
+                      step={0.05}
+                      onValueChange={(v) => {
+                        setIsScrubbing(true);
+                        setTime(v[0]);
+                      }}
+                      onValueCommit={handleSeekCommit}
+                      className="flex-1 cursor-pointer"
+                   />
+                   <span className="text-[10px] tabular-nums text-white/80 w-16 text-right">
+                     {formatTime(progress)} / {formatTime(duration)}
+                   </span>
+                </div>
+            </div>
+
+            {/* Right Action Bar (Vertical Stack) */}
+            <div className="flex flex-col gap-4 pointer-events-auto items-center pb-6">
+                {/* Profile / Follow placeholder (optional, kept simple) */}
+                
+                {/* Like */}
+                <div className="flex flex-col items-center gap-1">
+                   <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      className={cn(
+                        "h-12 w-12 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 text-white transition-all active:scale-90",
+                        reaction === 'liked' && "text-red-500 bg-white/10"
+                      )}
+                      onClick={handleLike}
+                   >
+                      <Heart className={cn("h-6 w-6", reaction === 'liked' && "fill-current")} />
+                   </Button>
+                   <span className="text-[10px] font-medium text-white shadow-black drop-shadow-md">Like</span>
+                </div>
+
+                {/* Dislike */}
+                <div className="flex flex-col items-center gap-1">
+                   <Button 
+                      size="icon" 
+                      variant="ghost" 
+                      className="h-12 w-12 rounded-full bg-black/40 backdrop-blur-sm hover:bg-black/60 text-white transition-all active:scale-90"
+                      onClick={handleDislike}
+                   >
+                      <HeartCrack className="h-6 w-6" />
+                   </Button>
+                   <span className="text-[10px] font-medium text-white shadow-black drop-shadow-md">Dislike</span>
+                </div>
+
+                 {/* More / Options (Placeholder) */}
+                 <Button 
+                    size="icon" 
+                    variant="ghost" 
+                    className="h-10 w-10 rounded-full bg-black/20 hover:bg-black/40 text-white/80"
+                 >
+                    <MoreHorizontal className="h-5 w-5" />
+                 </Button>
+            </div>
+        </div>
+
+        {/* Central Status Badges (Toast-like overlays) */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none flex flex-col gap-2 items-center">
+           {!isPlaying && !loading && (
+              <div className="bg-black/40 rounded-full p-4 backdrop-blur-sm animate-in fade-in zoom-in duration-200">
+                 <Play className="h-8 w-8 text-white/90 fill-white/90" />
               </div>
-              <Button size="icon" variant="ghost" onClick={refresh} title="Reload playlist">
-                <RefreshCcw className="h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="flex gap-2">
-              <Button onClick={goPrev} variant="secondary" className="flex-1">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Previous
-              </Button>
-              <Button onClick={goNext} className="flex-1">
-                Next
-                <ArrowRight className="ml-2 h-4 w-4" />
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <Button variant="outline" className="flex-1" onClick={handleTogglePlay}>
-                {isPlaying ? (
-                  <>
-                    <Pause className="mr-2 h-4 w-4" /> Pause
-                  </>
-                ) : (
-                  <>
-                    <Play className="mr-2 h-4 w-4" /> Play
-                  </>
-                )}
-              </Button>
-              <Select
-                value={String(playbackRate)}
-                onValueChange={(value) => {
-                  const rate = Number(value);
-                  setPlaybackRate(rate);
-                  if (videoRef.current) videoRef.current.playbackRate = rate;
-                }}
-              >
-                <SelectTrigger className="w-[120px]">
-                  <SelectValue placeholder="Speed" />
-                </SelectTrigger>
-                <SelectContent>
-                  {[0.75, 1, 1.5, 2].map((speed) => (
-                    <SelectItem key={speed} value={String(speed)}>
-                      {speed}x
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2">
-              <Button variant="ghost" onClick={handleDislike} className="border border-white/10 bg-destructive/10">
-                <ThumbsDown className="mr-2 h-4 w-4" /> Dislike & Next
-              </Button>
-              <Button variant="ghost" onClick={handleLike} className="border border-white/10 bg-emerald-500/10">
-                <ThumbsUp className="mr-2 h-4 w-4" /> Like & Next
-              </Button>
-            </div>
-
-            {loading && <p className="text-sm text-muted-foreground">Loading playlist…</p>}
-            {error && (
-              <p className="text-sm text-red-400">
-                {error} — check backend settings or reload.
-              </p>
-            )}
-          </CardContent>
-        </Card>
+           )}
+           
+           {pressMode === "fast" && (
+              <Badge className="bg-black/60 text-white backdrop-blur-md px-4 py-2 text-sm animate-pulse border-none">
+                 <Zap className="mr-2 h-4 w-4 fill-yellow-400 text-yellow-400" />
+                 2x Speed
+              </Badge>
+           )}
+           
+           {pressMode === "rewind" && (
+              <Badge className="bg-black/60 text-white backdrop-blur-md px-4 py-2 text-sm animate-pulse border-none">
+                 <ArrowLeft className="mr-2 h-4 w-4" />
+                 Rewinding...
+              </Badge>
+           )}
+        </div>
       </div>
     </div>
   );
