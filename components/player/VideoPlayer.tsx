@@ -401,7 +401,7 @@ export function VideoPlayer() {
                 </div>
 
                 {/* Scrub Bar */}
-                <div className="w-full flex items-center gap-3">
+                <div className="w-full flex items-center">
                    <VideoSlider
                       value={[isScrubbing ? time : progress]}
                       min={0}
@@ -412,11 +412,8 @@ export function VideoPlayer() {
                         setTime(v[0]);
                       }}
                       onValueCommit={handleSeekCommit}
-                      className="flex-1 cursor-pointer h-4 py-2"
+                      className="flex-1 cursor-pointer h-1"
                    />
-                   <span className="text-[10px] tabular-nums text-white/80 w-16 text-right">
-                     {formatTime(progress)} / {formatTime(duration)}
-                   </span>
                 </div>
             </div>
 
