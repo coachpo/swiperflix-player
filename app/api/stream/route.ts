@@ -11,6 +11,16 @@ const FORWARD_HEADERS = [
   "last-modified",
   "cache-control",
 ];
+const CACHE_FALLBACK = "private, max-age=120, stale-while-revalidate=600";
+const isSocketAbort = (error: unknown) => {
+  if (!error || typeof error !== "object") return false;
+  const cause = (error as any).cause;
+  return (
+    (error as any).name === "AbortError" ||
+    (error as any).message === "terminated" ||
+    (cause && typeof cause === "object" && ((cause as any).code === "UND_ERR_SOCKET"))
+  );
+};
 
 export async function GET(req: NextRequest) {
   const upstreamUrl = req.nextUrl.searchParams.get("url");
@@ -34,7 +44,6 @@ export async function GET(req: NextRequest) {
       method: "GET",
       headers,
       redirect: "follow",
-      cache: "no-store",
       signal: controller.signal,
     });
 
@@ -43,14 +52,17 @@ export async function GET(req: NextRequest) {
       const v = upstream.headers.get(h);
       if (v) responseHeaders.set(h, v);
     }
+    if (!responseHeaders.has("cache-control")) {
+      responseHeaders.set("cache-control", CACHE_FALLBACK);
+    }
 
     return new NextResponse(upstream.body, {
       status: upstream.status,
       headers: responseHeaders,
     });
   } catch (error: any) {
-    if (controller.signal.aborted) {
-      return new NextResponse(null, { status: 499 }); // Client closed request
+    if (controller.signal.aborted || isSocketAbort(error)) {
+      return new NextResponse(null, { status: 499 }); // Client closed request or aborted socket
     }
     console.error("Stream proxy error", error);
     return NextResponse.json({ error: "Failed to fetch upstream" }, { status: 502 });

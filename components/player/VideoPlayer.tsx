@@ -51,7 +51,6 @@ export function VideoPlayer() {
   const { toast } = useToast();
   
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const outgoingRef = useRef<HTMLVideoElement | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   const [duration, setDuration] = useState(0);
@@ -64,11 +63,15 @@ export function VideoPlayer() {
   const [reaction, setReaction] = useState<"liked" | "disliked" | null>(null);
   const [pressMode, setPressMode] = useState<"rewind" | "fast" | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
+  const [buffered, setBuffered] = useState(0);
   const [autoPlayNext, setAutoPlayNext] = useState(true);
   const [direction, setDirection] = useState<"next" | "prev" | null>(null);
   const [outgoing, setOutgoing] = useState<typeof current | null>(null);
   const [animating, setAnimating] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
+  const [pendingPlay, setPendingPlay] = useState(false);
+  const [activeEl, setActiveEl] = useState<HTMLVideoElement | null>(null);
+  const [outgoingEl, setOutgoingEl] = useState<HTMLVideoElement | null>(null);
 
   const pressTimer = useRef<NodeJS.Timeout | null>(null);
   const rewindInterval = useRef<NodeJS.Timeout | null>(null);
@@ -77,6 +80,10 @@ export function VideoPlayer() {
   const prevVideoRef = useRef<typeof current>(current);
   const preloadControllers = useRef<Map<string, AbortController>>(new Map());
   const preloadedUrls = useRef<Set<string>>(new Set());
+  const preloadedEls = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const pendingPlayRef = useRef(false);
+  const videoHostRef = useRef<HTMLDivElement | null>(null);
+  const outgoingHostRef = useRef<HTMLDivElement | null>(null);
   const preloadBudget = useMemo(() => {
     let desired = config.preloadCount ?? 2;
     if (typeof navigator !== "undefined" && (navigator as any).connection) {
@@ -91,11 +98,59 @@ export function VideoPlayer() {
     return Math.max(0, Math.min(5, desired));
   }, [config.preloadCount]);
 
-  // Sync video source for the active video
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || !current) return;
+  const applyVideoStyles = useCallback(
+    (
+      el: HTMLVideoElement,
+      opts: { outgoing?: boolean; orientationOverride?: "portrait" | "landscape" },
+    ) => {
+      const orient = opts.orientationOverride ?? orientation;
+      el.playsInline = true;
+      el.loop = true;
+      el.muted = !!opts.outgoing;
+      el.className = cn(
+        "absolute inset-0 h-full w-full object-contain object-center mx-auto block",
+        orient === "landscape"
+          ? "bg-gradient-to-b from-black/40 to-black/60"
+          : "bg-black",
+        animating
+          ? opts.outgoing
+            ? direction === "prev"
+              ? "animate-slide-out-down"
+              : "animate-slide-out-up"
+            : direction === "prev"
+              ? "animate-slide-in-down"
+              : "animate-slide-in-up"
+          : "",
+      );
+      el.style.transform = `rotate(${opts.outgoing ? outgoingRotation : rotation}deg)`;
+      el.style.transformOrigin = "center center";
+      el.style.transition = "transform 200ms ease";
+    },
+    [orientation, animating, direction, rotation, outgoingRotation],
+  );
 
+  // Sync video source for the active video, reusing preloaded element when available
+  useEffect(() => {
+    if (!current) return;
+
+    const preloadCtrl = preloadControllers.current.get(current.url);
+    if (preloadCtrl) {
+      preloadCtrl.abort();
+      preloadControllers.current.delete(current.url);
+    }
+
+    const fromPreload = preloadedEls.current.get(current.url);
+    if (fromPreload) {
+      preloadedEls.current.delete(current.url);
+    }
+
+    const video = fromPreload ?? document.createElement("video");
+    videoRef.current = video;
+    setActiveEl(video);
+
+    pendingPlayRef.current = false;
+    setPendingPlay(false);
+    setIsPlaying(false);
     setIsBuffering(true);
 
     const onTime = () => setTime(video.currentTime);
@@ -104,6 +159,19 @@ export function VideoPlayer() {
       setOrientation(video.videoWidth >= video.videoHeight ? "landscape" : "portrait");
       setTime(0);
       setIsBuffering(false);
+      setBuffered(0);
+    };
+    const onProgress = () => {
+      try {
+        if (!video.duration || video.buffered.length === 0) {
+          setBuffered(0);
+          return;
+        }
+        const end = video.buffered.end(video.buffered.length - 1);
+        setBuffered(Math.min(end, video.duration));
+      } catch {
+        setBuffered(0);
+      }
     };
     const onEnded = () => {
       if (autoPlayNext) {
@@ -114,7 +182,17 @@ export function VideoPlayer() {
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
     const onWaiting = () => setIsBuffering(true);
-    const onCanPlay = () => setIsBuffering(false);
+    const onCanPlay = () => {
+      setIsBuffering(false);
+      if (pendingPlayRef.current) {
+        pendingPlayRef.current = false;
+        setPendingPlay(false);
+        video
+          .play()
+          .then(() => setIsPlaying(true))
+          .catch(() => setIsPlaying(false));
+      }
+    };
 
     video.addEventListener("timeupdate", onTime);
     video.addEventListener("loadedmetadata", onLoaded);
@@ -124,13 +202,28 @@ export function VideoPlayer() {
     video.addEventListener("waiting", onWaiting);
     video.addEventListener("canplay", onCanPlay);
     video.addEventListener("canplaythrough", onCanPlay);
+    video.addEventListener("progress", onProgress);
 
-    video.src = current.url;
-    video.load();
+    const needsLoad =
+      video.networkState === HTMLMediaElement.NETWORK_EMPTY || video.src !== current.url;
+    if (needsLoad) {
+      video.preload = "auto";
+      video.src = current.url;
+      video.load();
+    } else if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      // Preloaded element already has metadata; update UI immediately.
+      onLoaded();
+    }
+
     video
       .play()
-      .then(() => setIsBuffering(false))
-      .catch(() => setIsPlaying(false));
+      .then(() => {
+        setIsBuffering(false);
+        setIsPlaying(true);
+      })
+      .catch(() => {
+        setIsPlaying(false);
+      });
 
     return () => {
       video.removeEventListener("timeupdate", onTime);
@@ -141,6 +234,7 @@ export function VideoPlayer() {
       video.removeEventListener("waiting", onWaiting);
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("canplaythrough", onCanPlay);
+      video.removeEventListener("progress", onProgress);
     };
   }, [current, goNext, autoPlayNext]);
 
@@ -151,11 +245,13 @@ export function VideoPlayer() {
     if (prev && prev.id !== current.id) {
       const dir = currentIndex > lastIndexRef.current ? "next" : "prev";
       setOutgoing(prev);
+      setOutgoingEl(activeEl);
       setOutgoingRotation(rotation);
       setDirection(dir);
       setAnimating(true);
       const timer = setTimeout(() => {
         setOutgoing(null);
+        setOutgoingEl(null);
         setAnimating(false);
       }, 320);
       lastIndexRef.current = currentIndex;
@@ -164,16 +260,26 @@ export function VideoPlayer() {
     }
     prevVideoRef.current = current;
     lastIndexRef.current = currentIndex;
-  }, [current, currentIndex, rotation]);
+  }, [current, currentIndex, rotation, activeEl]);
 
   // Preload next few videos sequentially (up to PRELOAD_COUNT)
   useEffect(() => {
-    if (preloadBudget <= 0) return;
+    if (preloadBudget <= 0 || videos.length === 0) return;
 
     const urls = videos
       .slice(currentIndex + 1, currentIndex + 1 + preloadBudget)
       .map((v) => v.url)
       .filter(Boolean);
+
+    const desired = new Set(urls);
+    preloadControllers.current.forEach((controller, url) => {
+      if (!desired.has(url)) {
+        controller.abort();
+        preloadControllers.current.delete(url);
+        preloadedUrls.current.delete(url);
+        preloadedEls.current.delete(url);
+      }
+    });
 
     const preloadSequential = async () => {
       for (const url of urls) {
@@ -184,7 +290,10 @@ export function VideoPlayer() {
 
         const videoEl = document.createElement("video");
         videoEl.preload = "auto";
+        videoEl.playsInline = true;
+        videoEl.loop = true;
         videoEl.src = url;
+        preloadedEls.current.set(url, videoEl);
 
         await new Promise<void>((resolve) => {
           const cleanup = () => {
@@ -192,6 +301,9 @@ export function VideoPlayer() {
             videoEl.removeEventListener("loadeddata", onReady);
             videoEl.removeEventListener("error", onError);
             preloadControllers.current.delete(url);
+            if (controller.signal.aborted) {
+              preloadedEls.current.delete(url);
+            }
           };
           const onReady = () => {
             cleanup();
@@ -218,15 +330,37 @@ export function VideoPlayer() {
   }, [videos, currentIndex, preloadBudget]);
 
   useEffect(() => {
+    const controllers = preloadControllers.current;
+    const els = preloadedEls.current;
+    const urls = preloadedUrls.current;
     return () => {
-      preloadControllers.current.forEach((controller) => controller.abort());
-      preloadControllers.current.clear();
+      controllers.forEach((controller) => controller.abort());
+      controllers.clear();
+      els.clear();
+      urls.clear();
     };
   }, []);
 
   useEffect(() => {
     setRotation(0);
   }, [current?.id]);
+
+  useEffect(() => {
+    const host = videoHostRef.current;
+    if (!host || !activeEl) return;
+    applyVideoStyles(activeEl, { outgoing: false, orientationOverride: orientation });
+    host.innerHTML = "";
+    host.appendChild(activeEl);
+  }, [activeEl, applyVideoStyles, orientation, rotation]);
+
+  useEffect(() => {
+    const host = outgoingHostRef.current;
+    if (!host || !outgoingEl) return;
+    const orient = outgoing?.orientation ?? orientation;
+    applyVideoStyles(outgoingEl, { outgoing: true, orientationOverride: orient });
+    host.innerHTML = "";
+    host.appendChild(outgoingEl);
+  }, [outgoingEl, applyVideoStyles, outgoing?.orientation, orientation, outgoingRotation]);
 
   // Handle Playback Rate & Press Modes
   useEffect(() => {
@@ -310,9 +444,26 @@ export function VideoPlayer() {
   const handleTogglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video || !video.src) return;
+
+    if (
+      video.networkState === HTMLMediaElement.NETWORK_NO_SOURCE ||
+      video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA
+    ) {
+      setPendingPlay(true);
+      pendingPlayRef.current = true;
+      setIsBuffering(true);
+      video.load();
+      return;
+    }
+
     if (video.paused) {
-      video.play();
-      setIsPlaying(true);
+      video
+        .play()
+        .then(() => setIsPlaying(true))
+        .catch(() => {
+          setPendingPlay(true);
+          pendingPlayRef.current = true;
+        });
     } else {
       video.pause();
       setIsPlaying(false);
@@ -429,48 +580,8 @@ export function VideoPlayer() {
       onTouchEnd={handleTouchEnd}
     >
       <div className="absolute inset-0 overflow-hidden">
-        {outgoing && (
-          <video
-            key={`out-${outgoing.id}`}
-            ref={outgoingRef}
-            playsInline
-            muted
-            className={cn(
-              "absolute inset-0 h-full w-full object-contain",
-              outgoing.orientation === "landscape"
-                ? "bg-gradient-to-b from-black/40 to-black/60"
-                : "bg-black",
-              direction === "prev" ? "animate-slide-out-down" : "animate-slide-out-up",
-            )}
-            style={{
-              transform: `rotate(${outgoingRotation}deg)`,
-              transformOrigin: "center center",
-              transition: "transform 200ms ease",
-            }}
-            src={outgoing.url}
-          />
-        )}
-        <video
-          key={current.id}
-          ref={videoRef}
-          playsInline
-          loop
-          src={current.url}
-          className={cn(
-            "absolute inset-0 h-full w-full object-contain object-center mx-auto block",
-            orientation === "landscape" ? "bg-gradient-to-b from-black/40 to-black/60" : "bg-black",
-            animating
-              ? direction === "prev"
-                ? "animate-slide-in-down"
-                : "animate-slide-in-up"
-              : "",
-          )}
-          style={{
-            transform: `rotate(${rotation}deg)`,
-            transformOrigin: "center center",
-            transition: "transform 200ms ease",
-          }}
-        />
+        {outgoing && <div ref={outgoingHostRef} className="absolute inset-0" />}
+        <div ref={videoHostRef} className="absolute inset-0" />
       </div>
 
       {/* Gesture Zones (Invisible) */}
@@ -519,7 +630,14 @@ export function VideoPlayer() {
           onTouchEnd={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
         >
-           <VideoSlider
+          <div className="relative h-6 w-full">
+            <div
+              className="absolute inset-y-2 left-0 rounded-full bg-white/20 pointer-events-none"
+              style={{
+                width: duration ? `${Math.min(buffered / duration, 1) * 100}%` : "0%",
+              }}
+            />
+            <VideoSlider
               value={[isScrubbing ? time : progress]}
               min={0}
               max={Math.max(duration, 0.1)}
@@ -529,8 +647,9 @@ export function VideoPlayer() {
                 setTime(v[0]);
               }}
               onValueCommit={handleSeekCommit}
-              className="cursor-pointer h-6 w-full"
-           />
+              className="cursor-pointer h-6 w-full relative"
+            />
+          </div>
         </div>
             </div>
 
