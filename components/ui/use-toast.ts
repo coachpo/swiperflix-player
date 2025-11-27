@@ -102,8 +102,15 @@ type Toast = {
   action?: React.ReactNode;
 };
 
+const generateId = () => {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return Math.random().toString(36).slice(2);
+};
+
 function toast({ ...props }: Toast) {
-  const id = crypto.randomUUID();
+  const id = generateId();
 
   const update = (props: Toast) =>
     dispatch({
