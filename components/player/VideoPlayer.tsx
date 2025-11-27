@@ -12,6 +12,8 @@ import {
   Pause,
   Zap,
   Settings2,
+  Volume2,
+  VolumeX,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VideoSlider } from "@/components/ui/video-slider";
@@ -32,10 +34,12 @@ import { useSettings } from "@/providers/settings-provider";
 
 const SCROLL_THRESHOLD = 25;
 const SWIPE_THRESHOLD = 45;
+const SWIPE_VELOCITY = 0.6; // px per ms
 const LONG_PRESS_DELAY = 250;
 const REWIND_STEP = 0.4;
 const REWIND_INTERVAL = 200;
 const CACHE_LIMIT = 8;
+const AUDIO_STORAGE_KEY = "swiperflix-audio";
 export function VideoPlayer() {
   const {
     current,
@@ -73,10 +77,16 @@ export function VideoPlayer() {
   const [pendingPlay, setPendingPlay] = useState(false);
   const [activeEl, setActiveEl] = useState<HTMLVideoElement | null>(null);
   const [outgoingEl, setOutgoingEl] = useState<HTMLVideoElement | null>(null);
+  const [volume, setVolume] = useState(1);
+  const [muted, setMuted] = useState(false);
+  const lastVolumeRef = useRef(1);
+  const [showDoubleTap, setShowDoubleTap] = useState(false);
+  const [firstFrameMs, setFirstFrameMs] = useState<number | null>(null);
+  const [bufferEvents, setBufferEvents] = useState(0);
 
   const pressTimer = useRef<NodeJS.Timeout | null>(null);
   const rewindInterval = useRef<NodeJS.Timeout | null>(null);
-  const touchStart = useRef<{ x: number; y: number } | null>(null);
+  const touchStart = useRef<{ x: number; y: number; t: number } | null>(null);
   const lastIndexRef = useRef(currentIndex);
   const prevVideoRef = useRef<typeof current>(current);
   const preloadControllers = useRef<Map<string, AbortController>>(new Map());
@@ -84,6 +94,11 @@ export function VideoPlayer() {
   const preloadedEls = useRef<Map<string, HTMLVideoElement>>(new Map());
   const cachedEls = useRef<Map<string, HTMLVideoElement>>(new Map());
   const pendingPlayRef = useRef(false);
+  const userPausedRef = useRef(false);
+  const autoPausedRef = useRef(false);
+  const retryCounts = useRef<Map<string, number>>(new Map());
+  const lastProgress = useRef<Map<string, number>>(new Map());
+  const loadStartRef = useRef<number | null>(null);
   const videoHostRef = useRef<HTMLDivElement | null>(null);
   const outgoingHostRef = useRef<HTMLDivElement | null>(null);
   const preloadBudget = useMemo(() => {
@@ -190,6 +205,10 @@ export function VideoPlayer() {
   // Sync video source for the active video, reusing preloaded element when available
   useEffect(() => {
     if (!current) return;
+    retryCounts.current.delete(current.url);
+    setFirstFrameMs(null);
+    setBufferEvents(0);
+    loadStartRef.current = performance.now();
 
     const preloadCtrl = preloadControllers.current.get(current.url);
     if (preloadCtrl) {
@@ -218,13 +237,29 @@ export function VideoPlayer() {
     setIsPlaying(false);
     setIsBuffering(true);
 
-    const onTime = () => setTime(video.currentTime);
+    const onTime = () => {
+      setTime(video.currentTime);
+      if (!isScrubbing && current?.id) {
+        lastProgress.current.set(current.id, video.currentTime);
+      }
+    };
     const onLoaded = () => {
       setDuration(video.duration || 0);
       setOrientation(video.videoWidth >= video.videoHeight ? "landscape" : "portrait");
-      setTime(0);
+      const resumeAt = lastProgress.current.get(current.id) ?? 0;
+      setTime(resumeAt);
+      video.currentTime = resumeAt;
       setIsBuffering(false);
       setBuffered(0);
+      video.muted = muted;
+      video.volume = muted ? 0 : volume;
+    };
+    const onFirstFrame = () => {
+      if (firstFrameMs === null) {
+        const start = loadStartRef.current;
+        const elapsed = start ? performance.now() - start : performance.now();
+        setFirstFrameMs(elapsed);
+      }
     };
     const onProgress = () => {
       try {
@@ -246,7 +281,10 @@ export function VideoPlayer() {
     };
     const onPlay = () => setIsPlaying(true);
     const onPause = () => setIsPlaying(false);
-    const onWaiting = () => setIsBuffering(true);
+    const onWaiting = () => {
+      setIsBuffering(true);
+      setBufferEvents((c) => c + 1);
+    };
     const onCanPlay = () => {
       setIsBuffering(false);
       if (pendingPlayRef.current) {
@@ -258,6 +296,24 @@ export function VideoPlayer() {
           .catch(() => setIsPlaying(false));
       }
     };
+    const onError = () => {
+      const attempts = retryCounts.current.get(current.url) ?? 0;
+      if (attempts < 2) {
+        retryCounts.current.set(current.url, attempts + 1);
+        setIsBuffering(true);
+        pendingPlayRef.current = true;
+        setPendingPlay(true);
+        video.load();
+        video.play().catch(() => {});
+        return;
+      }
+      retryCounts.current.delete(current.url);
+      setIsPlaying(false);
+      setIsBuffering(false);
+      toast({ title: "Playback error", description: "Skipping to next video" });
+      setDirection("next");
+      goNext();
+    };
 
     video.addEventListener("timeupdate", onTime);
     video.addEventListener("loadedmetadata", onLoaded);
@@ -268,6 +324,8 @@ export function VideoPlayer() {
     video.addEventListener("canplay", onCanPlay);
     video.addEventListener("canplaythrough", onCanPlay);
     video.addEventListener("progress", onProgress);
+    video.addEventListener("loadeddata", onFirstFrame, { once: true });
+    video.addEventListener("error", onError);
 
     const hasUsableCache = isUsableCache(video, current.url);
     const needsLoad = !hasUsableCache || video.src !== current.url;
@@ -286,6 +344,7 @@ export function VideoPlayer() {
         .then(() => {
           setIsBuffering(false);
           setIsPlaying(true);
+          userPausedRef.current = false;
           setPendingPlay(false);
           pendingPlayRef.current = false;
         })
@@ -293,6 +352,8 @@ export function VideoPlayer() {
           setIsPlaying(false);
           setPendingPlay(true);
           pendingPlayRef.current = true;
+          // If autoplay was blocked, ensure muted state aligns with policy
+          video.muted = true;
         });
     };
 
@@ -313,10 +374,11 @@ export function VideoPlayer() {
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("canplaythrough", onCanPlay);
       video.removeEventListener("progress", onProgress);
+      video.removeEventListener("error", onError);
       suspendVideoFetch(video);
       cacheVideoElement(current.url, video);
     };
-  }, [current, goNext, autoPlayNext, cacheVideoElement, isUsableCache, suspendVideoFetch]);
+  }, [current, goNext, autoPlayNext, cacheVideoElement, isUsableCache, suspendVideoFetch, toast, muted, volume]);
 
   // Track direction and animate in/out
   useEffect(() => {
@@ -344,12 +406,16 @@ export function VideoPlayer() {
 
   // Preload next few videos sequentially (up to PRELOAD_COUNT)
   useEffect(() => {
-    if (preloadBudget <= 0 || videos.length === 0) return;
+    if (videos.length === 0) return;
 
-    const urls = videos
-      .slice(currentIndex + 1, currentIndex + 1 + preloadBudget)
-      .map((v) => v.url)
-      .filter(Boolean);
+    const prevUrl = videos[currentIndex - 1]?.url;
+    const nextUrls = videos
+      .slice(currentIndex + 1, currentIndex + 1 + Math.max(0, preloadBudget))
+      .map((v) => v.url);
+
+    const urls = [prevUrl, ...nextUrls]
+      .filter(Boolean)
+      .filter((url, idx, arr) => url && arr.indexOf(url) === idx);
 
     const desired = new Set(urls);
     preloadControllers.current.forEach((controller, url) => {
@@ -472,6 +538,13 @@ export function VideoPlayer() {
     }
   }, [playbackRate, pressMode]);
 
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.muted = muted;
+    video.volume = muted ? 0 : volume;
+  }, [muted, volume, activeEl]);
+
   const handleWheel = (event: React.WheelEvent) => {
     const { deltaX, deltaY } = event;
     // Vertical scroll -> Next/Prev
@@ -497,7 +570,7 @@ export function VideoPlayer() {
 
   const handleTouchStart = (e: React.TouchEvent) => {
     const touch = e.touches[0];
-    touchStart.current = { x: touch.clientX, y: touch.clientY };
+    touchStart.current = { x: touch.clientX, y: touch.clientY, t: performance.now() };
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
@@ -505,10 +578,22 @@ export function VideoPlayer() {
     const touch = e.changedTouches[0];
     const dx = touch.clientX - touchStart.current.x;
     const dy = touch.clientY - touchStart.current.y;
+    const dt = Math.max(1, performance.now() - touchStart.current.t);
+    const vx = dx / dt;
+    const vy = dy / dt;
 
-    if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > SWIPE_THRESHOLD) {
+    const horizontalStrong = Math.abs(dx) > Math.abs(dy) + 10;
+    const verticalStrong = Math.abs(dy) > Math.abs(dx) + 10;
+
+    if (
+      (horizontalStrong && Math.abs(dx) > SWIPE_THRESHOLD) ||
+      (horizontalStrong && Math.abs(vx) > SWIPE_VELOCITY && Math.abs(dx) > 30)
+    ) {
       dx > 0 ? handleLike() : handleDislike();
-    } else if (Math.abs(dy) > SWIPE_THRESHOLD) {
+    } else if (
+      (verticalStrong && Math.abs(dy) > SWIPE_THRESHOLD) ||
+      (verticalStrong && Math.abs(vy) > SWIPE_VELOCITY && Math.abs(dy) > 30)
+    ) {
       if (dy < 0) {
         setDirection("next");
         goNext();
@@ -544,6 +629,14 @@ export function VideoPlayer() {
     }
   }, [dislikeCurrent, toast]);
 
+  const handleDoubleTap = useCallback(() => {
+    likeCurrent().catch(() => {});
+    setReaction("liked");
+    setShowDoubleTap(true);
+    setTimeout(() => setShowDoubleTap(false), 700);
+    setTimeout(() => setReaction(null), 900);
+  }, [likeCurrent]);
+
   const handleTogglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video || !video.src) return;
@@ -562,7 +655,10 @@ export function VideoPlayer() {
     if (video.paused) {
       video
         .play()
-        .then(() => setIsPlaying(true))
+        .then(() => {
+          userPausedRef.current = false;
+          setIsPlaying(true);
+        })
         .catch(() => {
           setPendingPlay(true);
           pendingPlayRef.current = true;
@@ -570,8 +666,72 @@ export function VideoPlayer() {
     } else {
       video.pause();
       setIsPlaying(false);
+      userPausedRef.current = true;
     }
   }, []);
+
+  const resumeIfAllowed = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || userPausedRef.current) return;
+    video
+      .play()
+      .then(() => {
+        setIsPlaying(true);
+        setIsBuffering(false);
+        userPausedRef.current = false;
+        setPendingPlay(false);
+        pendingPlayRef.current = false;
+      })
+      .catch(() => {
+        setPendingPlay(true);
+        pendingPlayRef.current = true;
+      });
+  }, []);
+
+  useEffect(() => {
+    const node = containerRef.current;
+    if (!node) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const entry = entries[0];
+        const visible = entry?.isIntersecting && entry.intersectionRatio >= 0.6;
+        if (visible) {
+          if (autoPausedRef.current) {
+            autoPausedRef.current = false;
+            resumeIfAllowed();
+          }
+        } else {
+          const video = videoRef.current;
+          if (video && !video.paused) {
+            autoPausedRef.current = true;
+            video.pause();
+            setIsPlaying(false);
+          }
+        }
+      },
+      { threshold: [0, 0.25, 0.5, 0.6, 0.75, 1] },
+    );
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [resumeIfAllowed]);
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (typeof document === "undefined") return;
+      if (document.visibilityState === "hidden") {
+        const video = videoRef.current;
+        if (video && !video.paused) {
+          autoPausedRef.current = true;
+          video.pause();
+          setIsPlaying(false);
+        }
+      } else {
+        resumeIfAllowed();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [resumeIfAllowed]);
 
   // Keyboard navigation
   useEffect(() => {
@@ -608,6 +768,33 @@ export function VideoPlayer() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [goNext, goPrev, handleLike, handleDislike, handleTogglePlay]);
 
+  // Volume & mute persistence
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = localStorage.getItem(AUDIO_STORAGE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { volume?: number; muted?: boolean };
+      if (typeof parsed.volume === "number") {
+        setVolume(Math.min(1, Math.max(0, parsed.volume)));
+        lastVolumeRef.current = Math.min(1, Math.max(0, parsed.volume));
+      }
+      if (typeof parsed.muted === "boolean") {
+        setMuted(parsed.muted);
+      }
+    } catch {
+      // ignore corrupted storage
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    localStorage.setItem(
+      AUDIO_STORAGE_KEY,
+      JSON.stringify({ volume, muted }),
+    );
+  }, [volume, muted]);
+
   const handleRotate = () => {
     setRotation((prev) => prev + 90);
   };
@@ -617,6 +804,9 @@ export function VideoPlayer() {
     if (!video) return;
     video.currentTime = value[0];
     setTime(value[0]);
+    if (current?.id) {
+      lastProgress.current.set(current.id, value[0]);
+    }
     setIsScrubbing(false);
   };
 
@@ -699,6 +889,7 @@ export function VideoPlayer() {
         <div
           className="h-full w-full touch-none select-none"
           onClick={handleTogglePlay}
+          onDoubleClick={handleDoubleTap}
           onPointerDown={endPress} // cancel existing press
           onContextMenu={(e) => e.preventDefault()}
         />
@@ -724,6 +915,42 @@ export function VideoPlayer() {
                 {/* Metadata */}
                 <div className="space-y-1">
                   <h2 className="font-semibold text-white drop-shadow-md">{friendlyTitle}</h2>
+                </div>
+
+                {/* Volume */}
+                <div className="flex items-center gap-3 text-white/80">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-9 w-9 p-0 bg-white/5 hover:bg-white/10"
+                    onClick={() => {
+                      if (muted) {
+                        setMuted(false);
+                        setVolume(lastVolumeRef.current || 1);
+                      } else {
+                        setMuted(true);
+                      }
+                    }}
+                  >
+                    {muted || volume === 0 ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
+                  </Button>
+                  <div className="flex-1 max-w-[220px]">
+                    <VideoSlider
+                      value={[muted ? 0 : volume]}
+                      min={0}
+                      max={1}
+                      step={0.02}
+                      onValueChange={(v) => {
+                        const val = Math.min(1, Math.max(0, v[0]));
+                        setVolume(val);
+                        lastVolumeRef.current = val || lastVolumeRef.current;
+                        if (val === 0) setMuted(true);
+                        else setMuted(false);
+                      }}
+                      className="h-6"
+                    />
+                  </div>
+                  <span className="text-xs tabular-nums">{Math.round((muted ? 0 : volume) * 100)}%</span>
                 </div>
 
         {/* Full Width Scrub Bar */}
@@ -826,8 +1053,8 @@ export function VideoPlayer() {
                        
                        <DropdownMenuSeparator className="bg-white/10" />
                        
-                       <DropdownMenuLabel className="text-xs text-white/50 uppercase tracking-wider mt-1">Speed</DropdownMenuLabel>
-                       {[0.5, 0.75, 1, 1.5, 2, 3].map((speed) => (
+            <DropdownMenuLabel className="text-xs text-white/50 uppercase tracking-wider mt-1">Speed</DropdownMenuLabel>
+            {[0.5, 0.75, 1, 1.25, 1.5, 2, 3].map((speed) => (
                          <DropdownMenuItem 
                             key={speed} 
                             onClick={() => setPlaybackRate(speed)}
@@ -871,6 +1098,19 @@ export function VideoPlayer() {
                  <ArrowLeft className="mr-2 h-4 w-4" />
                  Rewinding...
               </Badge>
+           )}
+           
+           {showDoubleTap && (
+              <div className="flex items-center justify-center">
+                <Heart className="h-16 w-16 text-red-500 drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)] animate-in zoom-in fade-in" />
+              </div>
+           )}
+
+           {(firstFrameMs !== null || bufferEvents > 0) && (
+             <div className="flex flex-col items-center gap-1 text-white/70 text-[10px] bg-black/40 rounded-full px-3 py-1">
+               {firstFrameMs !== null && <span>First frame: {Math.round(firstFrameMs)} ms</span>}
+               {bufferEvents > 0 && <span>Rebuffers: {bufferEvents}</span>}
+             </div>
            )}
         </div>
       </div>
