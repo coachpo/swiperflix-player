@@ -83,6 +83,7 @@ export function VideoPlayer() {
   const preloadedUrls = useRef<Set<string>>(new Set());
   const preloadedEls = useRef<Map<string, HTMLVideoElement>>(new Map());
   const cachedEls = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const objectUrlMap = useRef<Map<string, string>>(new Map());
   const pendingPlayRef = useRef(false);
   const videoHostRef = useRef<HTMLDivElement | null>(null);
   const outgoingHostRef = useRef<HTMLDivElement | null>(null);
@@ -100,6 +101,13 @@ export function VideoPlayer() {
     return Math.max(0, Math.min(5, desired));
   }, [config.preloadCount]);
 
+  const ANIMATION_CLASSES = [
+    "animate-slide-in-up",
+    "animate-slide-in-down",
+    "animate-slide-out-up",
+    "animate-slide-out-down",
+  ];
+
   const applyVideoStyles = useCallback(
     (
       el: HTMLVideoElement,
@@ -114,30 +122,40 @@ export function VideoPlayer() {
         orient === "landscape"
           ? "bg-gradient-to-b from-black/40 to-black/60"
           : "bg-black",
-        animating
-          ? opts.outgoing
-            ? direction === "prev"
-              ? "animate-slide-out-down"
-              : "animate-slide-out-up"
-            : direction === "prev"
-              ? "animate-slide-in-down"
-              : "animate-slide-in-up"
-          : "",
       );
       el.style.transform = `rotate(${opts.outgoing ? outgoingRotation : rotation}deg)`;
       el.style.transformOrigin = "center center";
       el.style.transition = "transform 200ms ease";
     },
-    [orientation, animating, direction, rotation, outgoingRotation],
+    [orientation, rotation, outgoingRotation],
+  );
+
+  const applyHostAnimation = useCallback(
+    (host: HTMLDivElement | null, opts: { outgoing?: boolean }) => {
+      if (!host) return;
+      host.classList.remove(...ANIMATION_CLASSES);
+      if (!animating) return;
+
+      const cls = opts.outgoing
+        ? direction === "prev"
+          ? "animate-slide-out-down"
+          : "animate-slide-out-up"
+        : direction === "prev"
+          ? "animate-slide-in-down"
+          : "animate-slide-in-up";
+
+      host.classList.add(cls);
+    },
+    [animating, direction],
   );
 
   const isUsableCache = useCallback((el: HTMLVideoElement | null | undefined, url: string) => {
     if (!el || !url) return false;
-    const hasSource = el.src === url;
+    const matchesUrl = el.src === url || el.dataset.originalUrl === url;
     const hasData = el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
     const hasDuration = Number.isFinite(el.duration) && el.duration > 0;
     const networkOk = el.networkState !== HTMLMediaElement.NETWORK_NO_SOURCE;
-    return hasSource && hasData && hasDuration && networkOk;
+    return matchesUrl && hasData && hasDuration && networkOk;
   }, []);
 
   const suspendVideoFetch = useCallback((el: HTMLVideoElement | null | undefined) => {
@@ -151,8 +169,14 @@ export function VideoPlayer() {
   const cacheVideoElement = useCallback(
     (url: string, el: HTMLVideoElement | null) => {
       if (!el || !url) return;
+      el.dataset.originalUrl = url;
       if (!isUsableCache(el, url)) {
         cachedEls.current.delete(url);
+        const existing = objectUrlMap.current.get(url);
+        if (existing) {
+          URL.revokeObjectURL(existing);
+          objectUrlMap.current.delete(url);
+        }
         return;
       }
       if (cachedEls.current.has(url)) {
@@ -165,9 +189,31 @@ export function VideoPlayer() {
         cachedEls.current.delete(oldest);
         preloadedEls.current.delete(oldest);
         preloadedUrls.current.delete(oldest);
+        const existing = objectUrlMap.current.get(oldest);
+        if (existing) {
+          URL.revokeObjectURL(existing);
+          objectUrlMap.current.delete(oldest);
+        }
       }
     },
     [isUsableCache],
+  );
+
+  const fetchVideoWithAuth = useCallback(
+    async (url: string) => {
+      if (!config.loadingVideoToken) {
+        throw new Error("Missing loadingVideoToken");
+      }
+      const resp = await fetch(url, { headers: { Authorization: config.loadingVideoToken } });
+      if (!resp.ok) throw new Error(`Video request failed (${resp.status})`);
+      const blob = await resp.blob();
+      const objectUrl = URL.createObjectURL(blob);
+      const existing = objectUrlMap.current.get(url);
+      if (existing) URL.revokeObjectURL(existing);
+      objectUrlMap.current.set(url, objectUrl);
+      return objectUrl;
+    },
+    [config.loadingVideoToken],
   );
 
   // Sync video source for the active video, reusing preloaded element when available
@@ -253,25 +299,61 @@ export function VideoPlayer() {
     video.addEventListener("progress", onProgress);
 
     const hasUsableCache = isUsableCache(video, current.url);
-    const needsLoad = !hasUsableCache || video.src !== current.url;
+    const needsLoad = !hasUsableCache || (video.dataset.originalUrl ?? video.src) !== current.url;
     if (needsLoad) {
-      video.preload = "auto";
-      video.src = current.url;
-      video.load();
+      const loadWithAuth = async () => {
+        try {
+          video.preload = "auto";
+          const src = await fetchVideoWithAuth(current.url);
+          if (videoRef.current !== video) return;
+          video.dataset.originalUrl = current.url;
+          video.src = src;
+          video.load();
+        } catch (err) {
+          setIsBuffering(false);
+          console.error(err);
+        }
+      };
+      loadWithAuth();
     } else if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
       // Preloaded element already has metadata; update UI immediately.
       onLoaded();
     }
 
-    video
-      .play()
-      .then(() => {
-        setIsBuffering(false);
-        setIsPlaying(true);
-      })
-      .catch(() => {
-        setIsPlaying(false);
-      });
+    const attemptPlay = () => {
+      video
+        .play()
+        .then(() => {
+          setIsBuffering(false);
+          setIsPlaying(true);
+          setPendingPlay(false);
+          pendingPlayRef.current = false;
+        })
+        .catch(() => {
+          setIsPlaying(false);
+          setPendingPlay(true);
+          pendingPlayRef.current = true;
+        });
+    };
+
+    if (needsLoad) {
+      setPendingPlay(true);
+      pendingPlayRef.current = true;
+      fetchVideoWithAuth(current.url)
+        .then((src) => {
+          if (videoRef.current !== video) return;
+          video.dataset.originalUrl = current.url;
+          video.src = src;
+          video.load();
+          attemptPlay();
+        })
+        .catch((err) => {
+          console.error(err);
+          setIsBuffering(false);
+        });
+    } else {
+      attemptPlay();
+    }
 
     return () => {
       video.removeEventListener("timeupdate", onTime);
@@ -286,7 +368,7 @@ export function VideoPlayer() {
       suspendVideoFetch(video);
       cacheVideoElement(current.url, video);
     };
-  }, [current, goNext, autoPlayNext, cacheVideoElement, isUsableCache, suspendVideoFetch]);
+  }, [current, goNext, autoPlayNext, cacheVideoElement, isUsableCache, suspendVideoFetch, fetchVideoWithAuth]);
 
   // Track direction and animate in/out
   useEffect(() => {
@@ -342,7 +424,6 @@ export function VideoPlayer() {
         videoEl.preload = "auto";
         videoEl.playsInline = true;
         videoEl.loop = true;
-        videoEl.src = url;
         preloadedEls.current.set(url, videoEl);
 
         await new Promise<void>((resolve) => {
@@ -353,6 +434,11 @@ export function VideoPlayer() {
             preloadControllers.current.delete(url);
             if (controller.signal.aborted) {
               preloadedEls.current.delete(url);
+              const existing = objectUrlMap.current.get(url);
+              if (existing) {
+                URL.revokeObjectURL(existing);
+                objectUrlMap.current.delete(url);
+              }
             }
           };
           const onReady = () => {
@@ -368,7 +454,19 @@ export function VideoPlayer() {
           videoEl.addEventListener("canplaythrough", onReady, { once: true });
           videoEl.addEventListener("loadeddata", onReady, { once: true });
           videoEl.addEventListener("error", onError, { once: true });
-          videoEl.load();
+          fetchVideoWithAuth(url)
+            .then((src) => {
+              if (controller.signal.aborted) {
+                URL.revokeObjectURL(src);
+                return;
+              }
+              videoEl.dataset.originalUrl = url;
+              videoEl.src = src;
+              videoEl.load();
+            })
+            .catch(() => {
+              onError();
+            });
         });
       }
     };
@@ -378,19 +476,22 @@ export function VideoPlayer() {
     return () => {
       // Do not abort in-flight on index change to preserve benefit; cleanup happens on unmount below.
     };
-  }, [videos, currentIndex, preloadBudget, cacheVideoElement]);
+  }, [videos, currentIndex, preloadBudget, cacheVideoElement, fetchVideoWithAuth]);
 
   useEffect(() => {
     const controllers = preloadControllers.current;
     const els = preloadedEls.current;
     const urls = preloadedUrls.current;
     const cache = cachedEls.current;
+    const objectUrls = objectUrlMap.current;
     return () => {
       controllers.forEach((controller) => controller.abort());
       controllers.clear();
       els.clear();
       urls.clear();
       cache.clear();
+      objectUrls.forEach((u) => URL.revokeObjectURL(u));
+      objectUrls.clear();
     };
   }, []);
 
@@ -402,18 +503,32 @@ export function VideoPlayer() {
     const host = videoHostRef.current;
     if (!host || !activeEl) return;
     applyVideoStyles(activeEl, { outgoing: false, orientationOverride: orientation });
+    applyHostAnimation(host, { outgoing: false });
     host.innerHTML = "";
     host.appendChild(activeEl);
-  }, [activeEl, applyVideoStyles, orientation, rotation]);
+  }, [activeEl, applyVideoStyles, applyHostAnimation, orientation, rotation]);
 
   useEffect(() => {
     const host = outgoingHostRef.current;
-    if (!host || !outgoingEl) return;
+    if (!host) return;
+    if (!outgoingEl) {
+      host.classList.remove(...ANIMATION_CLASSES);
+      host.innerHTML = "";
+      return;
+    }
     const orient = outgoing?.orientation ?? orientation;
     applyVideoStyles(outgoingEl, { outgoing: true, orientationOverride: orient });
+    applyHostAnimation(host, { outgoing: true });
     host.innerHTML = "";
     host.appendChild(outgoingEl);
-  }, [outgoingEl, applyVideoStyles, outgoing?.orientation, orientation, outgoingRotation]);
+  }, [
+    outgoingEl,
+    applyVideoStyles,
+    applyHostAnimation,
+    outgoing?.orientation,
+    orientation,
+    outgoingRotation,
+  ]);
 
   // Handle Playback Rate & Press Modes
   useEffect(() => {

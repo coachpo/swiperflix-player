@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSettings } from "@/providers/settings-provider";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/components/ui/use-toast";
 import { ApiConfig } from "@/lib/types";
+import { defaultApiConfig } from "@/lib/config";
 
 export function SettingsPanel() {
   const { config, updateConfig, reset } = useSettings();
@@ -19,14 +20,15 @@ export function SettingsPanel() {
 
   const [draft, setDraft] = useState<ApiConfig>(() => applyLoadingTokenDefault(config));
 
-  useEffect(() => {
-    setDraft(applyLoadingTokenDefault(config));
-  }, [config]);
-
   const handleSave = () => {
     const normalized = applyLoadingTokenDefault(draft);
     updateConfig(normalized);
     toast({ title: "Settings saved", description: "Backend endpoints updated." });
+  };
+
+  const handleReset = () => {
+    reset();
+    setDraft(applyLoadingTokenDefault(defaultApiConfig));
   };
 
   return (
@@ -123,7 +125,7 @@ export function SettingsPanel() {
           <Button onClick={handleSave} className="flex-1">
             Apply
           </Button>
-          <Button variant="ghost" onClick={reset}>
+          <Button variant="ghost" onClick={handleReset}>
             Reset
           </Button>
         </div>
