@@ -5,7 +5,6 @@ export const defaultApiConfig: ApiConfig = {
   playlistPath: "/api/v1/playlist",
   likePath: "/api/v1/videos/{id}/like",
   dislikePath: "/api/v1/videos/{id}/dislike",
-  loadingVideoToken: undefined,
   preloadCount: 2,
 };
 
@@ -17,12 +16,10 @@ export function hydrateConfig(): ApiConfig {
     const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
     if (!raw) return defaultApiConfig;
     const parsed = JSON.parse(raw) as Partial<ApiConfig>;
-    const merged: ApiConfig = {
+    return {
       ...defaultApiConfig,
       ...parsed,
-      loadingVideoToken: parsed.loadingVideoToken ?? parsed.token ?? defaultApiConfig.loadingVideoToken,
     };
-    return merged;
   } catch (error) {
     console.error("Failed to read stored config", error);
     return defaultApiConfig;

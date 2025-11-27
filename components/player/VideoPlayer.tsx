@@ -83,7 +83,6 @@ export function VideoPlayer() {
   const preloadedUrls = useRef<Set<string>>(new Set());
   const preloadedEls = useRef<Map<string, HTMLVideoElement>>(new Map());
   const cachedEls = useRef<Map<string, HTMLVideoElement>>(new Map());
-  const objectUrlMap = useRef<Map<string, string>>(new Map());
   const pendingPlayRef = useRef(false);
   const videoHostRef = useRef<HTMLDivElement | null>(null);
   const outgoingHostRef = useRef<HTMLDivElement | null>(null);
@@ -151,7 +150,7 @@ export function VideoPlayer() {
 
   const isUsableCache = useCallback((el: HTMLVideoElement | null | undefined, url: string) => {
     if (!el || !url) return false;
-    const matchesUrl = el.src === url || el.dataset.originalUrl === url;
+    const matchesUrl = el.src === url;
     const hasData = el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
     const hasDuration = Number.isFinite(el.duration) && el.duration > 0;
     const networkOk = el.networkState !== HTMLMediaElement.NETWORK_NO_SOURCE;
@@ -169,14 +168,8 @@ export function VideoPlayer() {
   const cacheVideoElement = useCallback(
     (url: string, el: HTMLVideoElement | null) => {
       if (!el || !url) return;
-      el.dataset.originalUrl = url;
       if (!isUsableCache(el, url)) {
         cachedEls.current.delete(url);
-        const existing = objectUrlMap.current.get(url);
-        if (existing) {
-          URL.revokeObjectURL(existing);
-          objectUrlMap.current.delete(url);
-        }
         return;
       }
       if (cachedEls.current.has(url)) {
@@ -189,47 +182,9 @@ export function VideoPlayer() {
         cachedEls.current.delete(oldest);
         preloadedEls.current.delete(oldest);
         preloadedUrls.current.delete(oldest);
-        const existing = objectUrlMap.current.get(oldest);
-        if (existing) {
-          URL.revokeObjectURL(existing);
-          objectUrlMap.current.delete(oldest);
-        }
       }
     },
     [isUsableCache],
-  );
-
-  const fetchVideoWithAuth = useCallback(
-    async (rawUrl: string) => {
-      const token = config.loadingVideoToken?.trim();
-
-      // Always proxy when a token is present to avoid CORS/preflight failures on remote media hosts.
-      // The proxy adds the Bearer prefix itself; we pass the bare token via query string.
-      let target: URL;
-      try {
-        target = new URL(rawUrl);
-      } catch {
-        target = new URL(rawUrl, config.baseUrl);
-      }
-
-      const proxiedUrl = token
-        ? `/api/stream?${new URLSearchParams({
-            url: target.href,
-            token: token.startsWith("Bearer ") ? token.slice(7) : token,
-          }).toString()}`
-        : target.href;
-
-      const resp = await fetch(proxiedUrl);
-      if (!resp.ok) throw new Error(`Video request failed (${resp.status})`);
-
-      const blob = await resp.blob();
-      const objectUrl = URL.createObjectURL(blob);
-      const existing = objectUrlMap.current.get(rawUrl);
-      if (existing) URL.revokeObjectURL(existing);
-      objectUrlMap.current.set(rawUrl, objectUrl);
-      return objectUrl;
-    },
-    [config.baseUrl, config.loadingVideoToken],
   );
 
   // Sync video source for the active video, reusing preloaded element when available
@@ -315,8 +270,12 @@ export function VideoPlayer() {
     video.addEventListener("progress", onProgress);
 
     const hasUsableCache = isUsableCache(video, current.url);
-    const needsLoad = !hasUsableCache || (video.dataset.originalUrl ?? video.src) !== current.url;
-    if (!needsLoad && video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+    const needsLoad = !hasUsableCache || video.src !== current.url;
+    if (needsLoad) {
+      video.preload = "auto";
+      video.src = current.url;
+      video.load();
+    } else if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
       // Preloaded element already has metadata; update UI immediately.
       onLoaded();
     }
@@ -340,22 +299,9 @@ export function VideoPlayer() {
     if (needsLoad) {
       setPendingPlay(true);
       pendingPlayRef.current = true;
-      video.preload = "auto";
-      fetchVideoWithAuth(current.url)
-        .then((src) => {
-          if (videoRef.current !== video) return;
-          video.dataset.originalUrl = current.url;
-          video.src = src;
-          video.load();
-          attemptPlay();
-        })
-        .catch((err) => {
-          console.error(err);
-          setIsBuffering(false);
-        });
-    } else {
-      attemptPlay();
     }
+
+    attemptPlay();
 
     return () => {
       video.removeEventListener("timeupdate", onTime);
@@ -370,7 +316,7 @@ export function VideoPlayer() {
       suspendVideoFetch(video);
       cacheVideoElement(current.url, video);
     };
-  }, [current, goNext, autoPlayNext, cacheVideoElement, isUsableCache, suspendVideoFetch, fetchVideoWithAuth]);
+  }, [current, goNext, autoPlayNext, cacheVideoElement, isUsableCache, suspendVideoFetch]);
 
   // Track direction and animate in/out
   useEffect(() => {
@@ -426,6 +372,7 @@ export function VideoPlayer() {
         videoEl.preload = "auto";
         videoEl.playsInline = true;
         videoEl.loop = true;
+        videoEl.src = url;
         preloadedEls.current.set(url, videoEl);
 
         await new Promise<void>((resolve) => {
@@ -436,11 +383,6 @@ export function VideoPlayer() {
             preloadControllers.current.delete(url);
             if (controller.signal.aborted) {
               preloadedEls.current.delete(url);
-              const existing = objectUrlMap.current.get(url);
-              if (existing) {
-                URL.revokeObjectURL(existing);
-                objectUrlMap.current.delete(url);
-              }
             }
           };
           const onReady = () => {
@@ -456,19 +398,7 @@ export function VideoPlayer() {
           videoEl.addEventListener("canplaythrough", onReady, { once: true });
           videoEl.addEventListener("loadeddata", onReady, { once: true });
           videoEl.addEventListener("error", onError, { once: true });
-          fetchVideoWithAuth(url)
-            .then((src) => {
-              if (controller.signal.aborted) {
-                URL.revokeObjectURL(src);
-                return;
-              }
-              videoEl.dataset.originalUrl = url;
-              videoEl.src = src;
-              videoEl.load();
-            })
-            .catch(() => {
-              onError();
-            });
+          videoEl.load();
         });
       }
     };
@@ -478,22 +408,19 @@ export function VideoPlayer() {
     return () => {
       // Do not abort in-flight on index change to preserve benefit; cleanup happens on unmount below.
     };
-  }, [videos, currentIndex, preloadBudget, cacheVideoElement, fetchVideoWithAuth]);
+  }, [videos, currentIndex, preloadBudget, cacheVideoElement]);
 
   useEffect(() => {
     const controllers = preloadControllers.current;
     const els = preloadedEls.current;
     const urls = preloadedUrls.current;
     const cache = cachedEls.current;
-    const objectUrls = objectUrlMap.current;
     return () => {
       controllers.forEach((controller) => controller.abort());
       controllers.clear();
       els.clear();
       urls.clear();
       cache.clear();
-      objectUrls.forEach((u) => URL.revokeObjectURL(u));
-      objectUrls.clear();
     };
   }, []);
 
