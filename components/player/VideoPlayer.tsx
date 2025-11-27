@@ -35,6 +35,7 @@ const SWIPE_THRESHOLD = 45;
 const LONG_PRESS_DELAY = 250;
 const REWIND_STEP = 0.4;
 const REWIND_INTERVAL = 200;
+const CACHE_LIMIT = 8;
 export function VideoPlayer() {
   const {
     current,
@@ -81,6 +82,7 @@ export function VideoPlayer() {
   const preloadControllers = useRef<Map<string, AbortController>>(new Map());
   const preloadedUrls = useRef<Set<string>>(new Set());
   const preloadedEls = useRef<Map<string, HTMLVideoElement>>(new Map());
+  const cachedEls = useRef<Map<string, HTMLVideoElement>>(new Map());
   const pendingPlayRef = useRef(false);
   const videoHostRef = useRef<HTMLDivElement | null>(null);
   const outgoingHostRef = useRef<HTMLDivElement | null>(null);
@@ -129,6 +131,45 @@ export function VideoPlayer() {
     [orientation, animating, direction, rotation, outgoingRotation],
   );
 
+  const isUsableCache = useCallback((el: HTMLVideoElement | null | undefined, url: string) => {
+    if (!el || !url) return false;
+    const hasSource = el.src === url;
+    const hasData = el.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+    const hasDuration = Number.isFinite(el.duration) && el.duration > 0;
+    const networkOk = el.networkState !== HTMLMediaElement.NETWORK_NO_SOURCE;
+    return hasSource && hasData && hasDuration && networkOk;
+  }, []);
+
+  const suspendVideoFetch = useCallback((el: HTMLVideoElement | null | undefined) => {
+    if (!el) return;
+    el.pause();
+    el.autoplay = false;
+    el.preload = "metadata";
+    el.dataset.suspended = "true";
+  }, []);
+
+  const cacheVideoElement = useCallback(
+    (url: string, el: HTMLVideoElement | null) => {
+      if (!el || !url) return;
+      if (!isUsableCache(el, url)) {
+        cachedEls.current.delete(url);
+        return;
+      }
+      if (cachedEls.current.has(url)) {
+        cachedEls.current.delete(url);
+      }
+      cachedEls.current.set(url, el);
+      while (cachedEls.current.size > CACHE_LIMIT) {
+        const oldest = cachedEls.current.keys().next().value as string | undefined;
+        if (!oldest) break;
+        cachedEls.current.delete(oldest);
+        preloadedEls.current.delete(oldest);
+        preloadedUrls.current.delete(oldest);
+      }
+    },
+    [isUsableCache],
+  );
+
   // Sync video source for the active video, reusing preloaded element when available
   useEffect(() => {
     if (!current) return;
@@ -139,8 +180,15 @@ export function VideoPlayer() {
       preloadControllers.current.delete(current.url);
     }
 
-    const fromPreload = preloadedEls.current.get(current.url);
-    if (fromPreload) {
+    const fromCache = cachedEls.current.get(current.url);
+    if (fromCache) {
+      cachedEls.current.delete(current.url);
+      fromCache.preload = "auto";
+      delete fromCache.dataset.suspended;
+    }
+
+    const fromPreload = fromCache ?? preloadedEls.current.get(current.url);
+    if (fromPreload && preloadedEls.current.has(current.url)) {
       preloadedEls.current.delete(current.url);
     }
 
@@ -204,8 +252,8 @@ export function VideoPlayer() {
     video.addEventListener("canplaythrough", onCanPlay);
     video.addEventListener("progress", onProgress);
 
-    const needsLoad =
-      video.networkState === HTMLMediaElement.NETWORK_EMPTY || video.src !== current.url;
+    const hasUsableCache = isUsableCache(video, current.url);
+    const needsLoad = !hasUsableCache || video.src !== current.url;
     if (needsLoad) {
       video.preload = "auto";
       video.src = current.url;
@@ -235,8 +283,10 @@ export function VideoPlayer() {
       video.removeEventListener("canplay", onCanPlay);
       video.removeEventListener("canplaythrough", onCanPlay);
       video.removeEventListener("progress", onProgress);
+      suspendVideoFetch(video);
+      cacheVideoElement(current.url, video);
     };
-  }, [current, goNext, autoPlayNext]);
+  }, [current, goNext, autoPlayNext, cacheVideoElement, isUsableCache, suspendVideoFetch]);
 
   // Track direction and animate in/out
   useEffect(() => {
@@ -308,6 +358,7 @@ export function VideoPlayer() {
           const onReady = () => {
             cleanup();
             preloadedUrls.current.add(url);
+            cacheVideoElement(url, videoEl);
             resolve();
           };
           const onError = () => {
@@ -327,17 +378,19 @@ export function VideoPlayer() {
     return () => {
       // Do not abort in-flight on index change to preserve benefit; cleanup happens on unmount below.
     };
-  }, [videos, currentIndex, preloadBudget]);
+  }, [videos, currentIndex, preloadBudget, cacheVideoElement]);
 
   useEffect(() => {
     const controllers = preloadControllers.current;
     const els = preloadedEls.current;
     const urls = preloadedUrls.current;
+    const cache = cachedEls.current;
     return () => {
       controllers.forEach((controller) => controller.abort());
       controllers.clear();
       els.clear();
       urls.clear();
+      cache.clear();
     };
   }, []);
 
