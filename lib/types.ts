@@ -17,4 +17,5 @@ export type ApiConfig = {
   playlistPath: string;
   likePath: string;
   dislikePath: string;
+  token?: string;
 };

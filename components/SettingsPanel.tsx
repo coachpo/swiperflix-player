@@ -66,6 +66,19 @@ export function SettingsPanel() {
             />
           </div>
         </div>
+        <div className="space-y-2">
+          <Label htmlFor="token">Bearer token (optional)</Label>
+          <Input
+            id="token"
+            type="password"
+            value={draft.token ?? ""}
+            onChange={(e) => setDraft((prev) => ({ ...prev, token: e.target.value }))}
+            placeholder="sk-..."
+          />
+          <p className="text-xs text-muted-foreground">
+            If provided, requests include Authorization: Bearer &lt;token&gt;.
+          </p>
+        </div>
         <div className="flex gap-2">
           <Button onClick={handleSave} className="flex-1">
             Apply

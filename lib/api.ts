@@ -13,8 +13,20 @@ async function withTimeout<T>(promise: Promise<T>, ms = DEFAULT_TIMEOUT) {
   return result;
 }
 
-async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
-  const resp = await withTimeout(fetch(url, init));
+function authHeaders(config: ApiConfig): Record<string, string> {
+  return config.token ? { Authorization: `Bearer ${config.token}` } : {};
+}
+
+async function requestJson<T>(url: string, init: RequestInit = {}, config?: ApiConfig): Promise<T> {
+  const resp = await withTimeout(
+    fetch(url, {
+      ...init,
+      headers: {
+        ...(init.headers || {}),
+        ...(config ? authHeaders(config) : {}),
+      },
+    }),
+  );
   if (!resp.ok) {
     const body = await resp.text().catch(() => "");
     throw new Error(`Request failed (${resp.status}): ${body || resp.statusText}`);
@@ -25,7 +37,7 @@ async function requestJson<T>(url: string, init?: RequestInit): Promise<T> {
 export async function fetchPlaylist(config: ApiConfig, cursor?: string | null) {
   const qs = cursor ? `?cursor=${encodeURIComponent(cursor)}` : "";
   const url = `${config.baseUrl}${config.playlistPath}${qs}`;
-  return requestJson<PlaylistResponse>(url);
+  return requestJson<PlaylistResponse>(url, {}, config);
 }
 
 export async function sendReaction(config: ApiConfig, id: string, action: "like" | "dislike") {
@@ -35,5 +47,5 @@ export async function sendReaction(config: ApiConfig, id: string, action: "like"
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ id }),
-  });
+  }, config);
 }
