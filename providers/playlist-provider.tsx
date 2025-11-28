@@ -117,7 +117,7 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
   );
 
   const goNext = useCallback(() => {
-    let consumePrefetched = false;
+    let shouldConsumePrefetched = false;
     setCurrentIndex((idx) => {
       const nextIndex = idx + 1;
       if (nextIndex >= videos.length) {
@@ -126,7 +126,7 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
           void loadMore();
         } else {
           if (prefetchedNext.current) {
-            consumePrefetched = true;
+            shouldConsumePrefetched = true;
           } else {
             awaitingPrefetchSwap.current = true;
             void prefetchNextPlaylist().then(() => {
@@ -141,7 +141,7 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
       awaitingPrefetchSwap.current = false;
       return nextIndex;
     });
-    if (consumePrefetched) {
+    if (shouldConsumePrefetched) {
       consumePrefetched();
       awaitingPrefetchSwap.current = false;
     }
