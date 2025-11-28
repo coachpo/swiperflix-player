@@ -4,14 +4,12 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   RotateCw,
-  Gauge,
   Heart,
   HeartCrack,
   MoreHorizontal,
   Play,
   Pause,
   Zap,
-  Settings2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { VideoSlider } from "@/components/ui/video-slider";
@@ -27,9 +25,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn, formatTime } from "@/lib/utils";
 import { reportNotPlayable, sendImpression } from "@/lib/api";
+import { apiConfig } from "@/lib/config";
 import { usePlaylist } from "@/providers/playlist-provider";
 import { useToast } from "@/components/ui/use-toast";
-import { useSettings } from "@/providers/settings-provider";
 
 const ANIMATION_CLASSES = [
   "animate-slide-in-up",
@@ -58,7 +56,7 @@ export function VideoPlayer() {
     dislikeCurrent,
     refresh,
   } = usePlaylist();
-  const { config } = useSettings();
+  const config = apiConfig;
   const { toast } = useToast();
   
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -84,8 +82,6 @@ export function VideoPlayer() {
   const [activeEl, setActiveEl] = useState<HTMLVideoElement | null>(null);
   const [outgoingEl, setOutgoingEl] = useState<HTMLVideoElement | null>(null);
   const [showDoubleTap, setShowDoubleTap] = useState(false);
-  const [firstFrameMs, setFirstFrameMs] = useState<number | null>(null);
-  const [bufferEvents, setBufferEvents] = useState(0);
 
   const pressTimer = useRef<NodeJS.Timeout | null>(null);
   const rewindInterval = useRef<NodeJS.Timeout | null>(null);
@@ -102,7 +98,6 @@ export function VideoPlayer() {
   const autoPausedRef = useRef(false);
   const retryCounts = useRef<Map<string, number>>(new Map());
   const lastProgress = useRef<Map<string, number>>(new Map());
-  const loadStartRef = useRef<number | null>(null);
   const videoHostRef = useRef<HTMLDivElement | null>(null);
   const outgoingHostRef = useRef<HTMLDivElement | null>(null);
   const sessionIdRef = useRef<string>(
@@ -114,10 +109,7 @@ export function VideoPlayer() {
   const reportedNotPlayable = useRef<Set<string>>(new Set());
   const lastVideoIdRef = useRef<string | null>(null);
   // Always honor the requested preload count; skip connection-based throttling.
-  const preloadBudget = useMemo(() => {
-    const desired = config.preloadCount ?? 2;
-    return Math.max(0, desired);
-  }, [config.preloadCount]);
+  const preloadBudget = useMemo(() => Math.max(0, config.preloadCount), [config.preloadCount]);
 
   const applyVideoStyles = useCallback(
     (
@@ -280,9 +272,6 @@ export function VideoPlayer() {
   useEffect(() => {
     if (!current) return;
     retryCounts.current.delete(current.url);
-    setFirstFrameMs(null);
-    setBufferEvents(0);
-    loadStartRef.current = performance.now();
 
     const preloadCtrl = preloadControllers.current.get(current.url);
     if (preloadCtrl) {
@@ -331,14 +320,6 @@ export function VideoPlayer() {
       setIsBuffering(false);
       setBuffered(0);
     };
-    const onFirstFrame = () => {
-      setFirstFrameMs((prev) => {
-        if (prev !== null) return prev;
-        const start = loadStartRef.current;
-        const elapsed = start ? performance.now() - start : performance.now();
-        return elapsed;
-      });
-    };
     const onProgress = () => {
       try {
         if (!video.duration || video.buffered.length === 0) {
@@ -362,7 +343,6 @@ export function VideoPlayer() {
     const onPause = () => setIsPlaying(false);
     const onWaiting = () => {
       setIsBuffering(true);
-      setBufferEvents((c) => c + 1);
     };
     const onCanPlay = () => {
       setIsBuffering(false);
@@ -407,7 +387,6 @@ export function VideoPlayer() {
     video.addEventListener("canplay", onCanPlay);
     video.addEventListener("canplaythrough", onCanPlay);
     video.addEventListener("progress", onProgress);
-    video.addEventListener("loadeddata", onFirstFrame, { once: true });
     video.addEventListener("error", onError);
 
     const hasUsableCache = isUsableCache(video, current.url);
@@ -957,7 +936,6 @@ export function VideoPlayer() {
 
   const progress = duration ? Math.min(time, duration) : 0;
   const friendlyTitle = useMemo(() => current?.title || `Video ${currentIndex + 1}`, [current, currentIndex]);
-  const showDebugOverlay = config.showDebugOverlay ?? false;
 
   if (!current) {
     return (
@@ -1172,18 +1150,11 @@ export function VideoPlayer() {
                  Rewinding...
               </Badge>
            )}
-           
+
            {showDoubleTap && (
               <div className="flex items-center justify-center">
                 <Heart className="h-16 w-16 text-red-500 drop-shadow-[0_2px_6px_rgba(0,0,0,0.6)] animate-in zoom-in fade-in" />
               </div>
-           )}
-
-           {showDebugOverlay && (firstFrameMs !== null || bufferEvents > 0) && (
-             <div className="flex flex-col items-center gap-1 text-white/70 text-[10px] bg-black/40 rounded-full px-3 py-1">
-               {firstFrameMs !== null && <span>First frame: {Math.round(firstFrameMs)} ms</span>}
-               {bufferEvents > 0 && <span>Rebuffers: {bufferEvents}</span>}
-             </div>
            )}
         </div>
       </div>

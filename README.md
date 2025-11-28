@@ -7,7 +7,7 @@ Gesture-first short video player built with Next.js 16, React 19, TypeScript, Ta
 - Wheel or swipe to move: vertical for next/previous, horizontal for like/dislike (dislike also advances).
 - Playback controls: tap to pause/resume, drag progress bar, speeds 0.75/1/1.5/2x, optional auto-play next.
 - Long-press edges: left third rewinds in small steps; right third fast-forwards at 2x.
-- Backend configurable in-app (base URL, playlist/like/dislike paths, optional bearer token) and persisted to localStorage with a reset button.
+- Backend endpoints baked into the app; base URL and optional bearer token come from environment variables.
 - Auto-refreshes the playlist when the current batch ends and prefetches near the tail.
 
 ## Tech Stack
@@ -26,15 +26,21 @@ pnpm dev
 ```
 
 The app runs at http://localhost:3000.
-Ensure your backend API is reachable at http://localhost:8000 (matching the defaults) or update the Settings tab.
+Ensure your backend API is reachable at http://localhost:8000 (matching the defaults) or set env vars to point elsewhere.
 
 ## Configuration
 
-- Environment: `NEXT_PUBLIC_API_BASE_URL` (optional) sets the default backend base URL. Defaults to `http://localhost:8000`.
-- Runtime settings (Settings tab): `baseUrl`, `playlistPath`, `likePath`, `dislikePath`, `token` (Bearer). Changes persist to `localStorage`; Reset restores defaults from `lib/config.ts`.
-- Default paths: `baseUrl=http://localhost:8000`, `playlistPath=/api/v1/playlist`, `likePath=/api/v1/videos/{id}/like`, `dislikePath=/api/v1/videos/{id}/dislike`.
-- Streaming auth: clients fetch video URLs directly; ensure your backend supports `Authorization: Bearer <token>` when you provide relative URLs or same-origin resources.
-- Preloading: default is to preload the next 2 videos; the app automatically reduces preloads on slow/data-saver connections.
+- Environment:
+  - `NEXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:8000`)
+  - `NEXT_PUBLIC_API_BEARER_TOKEN` (optional; falls back to `NEXT_PUBLIC_API_TOKEN`)
+- API paths are fixed in `lib/config.ts`:
+  - `playlistPath=/api/v1/playlist`
+  - `likePath=/api/v1/videos/{id}/like`
+  - `dislikePath=/api/v1/videos/{id}/dislike`
+  - `impressionPath=/api/v1/videos/{id}/impression`
+  - `notPlayablePath=/api/v1/videos/{id}/not-playable`
+- Streaming auth: requests include `Authorization: Bearer <token>` when the env var is set.
+- Preloading: defaults to preloading the next 3 videos.
 
 ## Expected Backend Contract
 
@@ -57,8 +63,8 @@ See `docs/api.md` for a fuller proposal, including pagination notes and an optio
 ## Project Structure
 
 - `app/` - App Router entry, styles, PWA manifest.
-- `components/` - Player, settings panel, and shared UI primitives.
-- `providers/` - React contexts for playlist state and backend settings.
+- `components/` - Player and shared UI primitives.
+- `providers/` - React contexts for playlist state.
 - `lib/` - Types, config helpers, and API client.
 - `public/` - Static assets.
 - `docs/api.md` - Proposed backend contract.
@@ -72,7 +78,7 @@ See `docs/api.md` for a fuller proposal, including pagination notes and an optio
 
 ## Deployment
 
-1. Configure `NEXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:8000`).
+1. Configure `NEXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:8000`) and optionally `NEXT_PUBLIC_API_BEARER_TOKEN`.
 2. `pnpm install && pnpm build`
 3. `pnpm start` to serve the built output.
 

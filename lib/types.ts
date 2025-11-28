@@ -20,6 +20,5 @@ export type ApiConfig = {
   impressionPath: string;
   notPlayablePath: string;
   token?: string;
-  preloadCount?: number;
-  showDebugOverlay?: boolean;
+  preloadCount: number;
 };

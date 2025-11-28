@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
-import { defaultApiConfig } from "@/lib/config";
+import { apiConfig } from "@/lib/config";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -33,8 +33,8 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <head>
-        <link rel="preconnect" href={defaultApiConfig.baseUrl} crossOrigin="" />
-        <link rel="dns-prefetch" href={defaultApiConfig.baseUrl} />
+        <link rel="preconnect" href={apiConfig.baseUrl} crossOrigin="" />
+        <link rel="dns-prefetch" href={apiConfig.baseUrl} />
       </head>
       <body className={`${inter.className} h-full bg-background text-foreground`}>
         {children}

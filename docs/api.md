@@ -112,9 +112,10 @@ Example:
 ```
 
 ## Config mapping in the frontend
-- `baseUrl`: defaults to `http://localhost:8000`
-- `playlistPath`: defaults to `/api/v1/playlist`
+- `baseUrl`: `NEXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:8000`)
+- `playlistPath`: `/api/v1/playlist`
 - `likePath`: `/api/v1/videos/{id}/like`
 - `dislikePath`: `/api/v1/videos/{id}/dislike`
-
-Users can override these at runtime via the Settings panel (persisted to `localStorage`) or by setting `NEXT_PUBLIC_API_BASE_URL`.
+- `impressionPath`: `/api/v1/videos/{id}/impression`
+- `notPlayablePath`: `/api/v1/videos/{id}/not-playable`
+- `Authorization`: sent when `NEXT_PUBLIC_API_BEARER_TOKEN` (or `NEXT_PUBLIC_API_TOKEN`) is set.

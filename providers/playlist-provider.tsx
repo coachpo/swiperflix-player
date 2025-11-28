@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { fetchPlaylist, sendReaction } from "@/lib/api";
 import { VideoItem } from "@/lib/types";
-import { useSettings } from "./settings-provider";
+import { apiConfig } from "@/lib/config";
 
 type PlaylistContextValue = {
   videos: VideoItem[];
@@ -21,7 +21,7 @@ type PlaylistContextValue = {
 const PlaylistContext = createContext<PlaylistContextValue | null>(null);
 
 export function PlaylistProvider({ children }: { children: React.ReactNode }) {
-  const { config } = useSettings();
+  const config = apiConfig;
   const [videos, setVideos] = useState<VideoItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [currentIndex, setCurrentIndex] = useState(0);
