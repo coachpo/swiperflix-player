@@ -1,40 +1,33 @@
-FROM node:22-alpine AS builder
-
-ARG NEXT_PUBLIC_API_BASE_URL
-ARG NEXT_PUBLIC_API_BEARER_TOKEN
-ARG NODE_ENV=production
-ARG PORT=3000
-ARG HOSTNAME=0.0.0.0
-
-ENV NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
-ENV NEXT_PUBLIC_API_BEARER_TOKEN=${NEXT_PUBLIC_API_BEARER_TOKEN}
-ENV NODE_ENV=${NODE_ENV}
-ENV PORT=${PORT}
-ENV HOSTNAME=${HOSTNAME}
-
+FROM node:22-alpine AS base
 WORKDIR /app
-RUN corepack enable
+RUN apk add --no-cache libc6-compat \
+  && corepack enable \
+  && rm -rf /var/cache/apk/*
+ENV NEXT_TELEMETRY_DISABLED=1
 
+FROM base AS deps
 COPY package.json pnpm-lock.yaml ./
 RUN pnpm install --frozen-lockfile
 
+FROM base AS builder
+COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm run build
 
-FROM node:22-alpine AS runner
-ENV NODE_ENV=production
-ENV PORT=3000
-ENV HOSTNAME=0.0.0.0
+FROM base AS runner
+ENV NODE_ENV=production \
+  PORT=3000 \
+  HOSTNAME=0.0.0.0
 
-WORKDIR /app
-RUN corepack enable
+# Run as non-root for better security hardening
+RUN addgroup -g 1001 -S nodejs && adduser -S nextjs -u 1001 -G nodejs
+USER nextjs
 
-COPY --from=builder /app/package.json ./package.json
-COPY --from=builder /app/pnpm-lock.yaml ./pnpm-lock.yaml
-COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/.next ./.next
+# Copy only the standalone output and static assets produced by Next.js
 COPY --from=builder /app/public ./public
+COPY --from=builder /app/.next/standalone ./
+COPY --from=builder /app/.next/static ./.next/static
 
 EXPOSE 3000
 
-CMD ["pnpm", "start"]
+CMD ["node", "server.js"]
