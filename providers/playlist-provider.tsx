@@ -29,10 +29,16 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string>();
   const pendingMore = useRef(false);
+  const prefetchingNext = useRef(false);
+  const prefetchedNext = useRef<Awaited<ReturnType<typeof fetchPlaylist>> | null>(null);
+  const prefetchPromise = useRef<Promise<void> | null>(null);
+  const awaitingPrefetchSwap = useRef(false);
 
   const bootstrap = useCallback(async () => {
     setLoading(true);
     setError(undefined);
+    prefetchedNext.current = null;
+    awaitingPrefetchSwap.current = false;
     try {
       const resp = await fetchPlaylist(config, null);
       setVideos(resp.items || []);
@@ -61,22 +67,57 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
     }
   }, [config, cursor, loadingMore]);
 
+  const consumePrefetched = useCallback(() => {
+    if (!prefetchedNext.current) return false;
+    const next = prefetchedNext.current;
+    prefetchedNext.current = null;
+    awaitingPrefetchSwap.current = false;
+    setVideos(next.items || []);
+    setCursor(next.nextCursor ?? null);
+    setCurrentIndex(0);
+    return true;
+  }, []);
+
+  const prefetchNextPlaylist = useCallback(() => {
+    if (prefetchedNext.current) return Promise.resolve();
+    if (prefetchPromise.current) return prefetchPromise.current;
+    prefetchingNext.current = true;
+    prefetchPromise.current = fetchPlaylist(config, null)
+      .then((resp) => {
+        prefetchedNext.current = resp;
+      })
+      .catch((err) => {
+        console.warn("Prefetch next playlist failed", err);
+      })
+      .finally(() => {
+        prefetchingNext.current = false;
+        prefetchPromise.current = null;
+      });
+    return prefetchPromise.current;
+  }, [config]);
+
   const ensureFuture = useCallback(
     (targetIndex: number) => {
       if (videos.length === 0) {
         void bootstrap();
         return;
       }
-      const nearEnd = targetIndex >= videos.length - 1;
-      if (nearEnd && cursor !== null) {
-        // Prefetch next batch while user watches the tail of current list.
-        void loadMore();
+      const nearTail = targetIndex >= Math.max(0, videos.length - 2);
+      if (nearTail) {
+        if (cursor !== null) {
+          // Prefetch next batch while user watches the tail of current list.
+          void loadMore();
+        } else {
+          // No further pages; start fetching a fresh playlist ahead of time.
+          void prefetchNextPlaylist();
+        }
       }
     },
-    [videos.length, bootstrap, cursor, loadMore],
+    [videos.length, bootstrap, cursor, loadMore, prefetchNextPlaylist],
   );
 
   const goNext = useCallback(() => {
+    let consumePrefetched = false;
     setCurrentIndex((idx) => {
       const nextIndex = idx + 1;
       if (nextIndex >= videos.length) {
@@ -84,16 +125,30 @@ export function PlaylistProvider({ children }: { children: React.ReactNode }) {
         if (cursor !== null) {
           void loadMore();
         } else {
-          void bootstrap();
+          if (prefetchedNext.current) {
+            consumePrefetched = true;
+          } else {
+            awaitingPrefetchSwap.current = true;
+            void prefetchNextPlaylist().then(() => {
+              if (!awaitingPrefetchSwap.current) return;
+              consumePrefetched();
+            });
+          }
         }
         return idx;
       }
       ensureFuture(nextIndex);
+      awaitingPrefetchSwap.current = false;
       return nextIndex;
     });
-  }, [ensureFuture, videos.length, cursor, loadMore, bootstrap]);
+    if (consumePrefetched) {
+      consumePrefetched();
+      awaitingPrefetchSwap.current = false;
+    }
+  }, [ensureFuture, videos.length, cursor, loadMore, prefetchNextPlaylist, consumePrefetched]);
 
   const goPrev = useCallback(() => {
+    awaitingPrefetchSwap.current = false;
     setCurrentIndex((idx) => Math.max(idx - 1, 0));
   }, []);
 
