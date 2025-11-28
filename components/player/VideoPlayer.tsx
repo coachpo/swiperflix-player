@@ -1015,13 +1015,10 @@ export function VideoPlayer() {
       </div>
 
       {/* Overlay UI Layer (Pointer events pass through except on buttons) */}
-      <div className="absolute inset-0 z-20 pointer-events-none flex flex-col justify-between p-4 pb-12">
+      <div className="absolute inset-0 z-20 pointer-events-none flex flex-col p-4 pb-[calc(3rem+env(safe-area-inset-bottom))]">
         
-        {/* Top Right: Speed Control (Removed) */}
-        <div className="flex justify-end pt-16 pr-2 pointer-events-auto" />
-
         {/* Main HUD Area */}
-        <div className="flex items-end gap-4">
+        <div className="mt-auto flex items-end gap-4">
             {/* Bottom Info & Progress */}
             <div className="flex-1 flex flex-col gap-3 pointer-events-auto pb-2">
                 {/* Metadata */}
@@ -1031,7 +1028,7 @@ export function VideoPlayer() {
 
         {/* Full Width Scrub Bar */}
         <div 
-          className="w-full pointer-events-auto absolute bottom-8 left-0 z-10 px-8 pr-24 sm:pr-32"
+          className="w-full pointer-events-auto absolute bottom-[calc(2rem+env(safe-area-inset-bottom))] left-0 z-10 px-8 pr-24 sm:pr-32"
           onTouchStart={(e) => e.stopPropagation()}
           onTouchEnd={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
