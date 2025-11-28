@@ -1,84 +1,86 @@
-# Swiperflix
+# Swiperflix Player
 
-Gesture-first short video player built with Next.js 16, React 19, TypeScript, Tailwind CSS, and shadcn/ui. Scroll, swipe, and long-press through clips while sending like/dislike events to your backend.
+Gesture-first short‑video player built with Next.js 16, React 19, TypeScript, Tailwind CSS, and shadcn/ui. Swipe, scroll, and long‑press through clips while sending like/dislike/impression events to your backend.
 
-## Features
+## Highlights
 
-- Wheel or swipe to move: vertical for next/previous, horizontal for like/dislike (dislike also advances).
-- Playback controls: tap to pause/resume, drag progress bar, speeds 0.75/1/1.5/2x, optional auto-play next.
-- Long-press edges: left third rewinds in small steps; right third fast-forwards at 2x.
-- Backend endpoints baked into the app; base URL and optional bearer token come from environment variables.
-- Auto-refreshes the playlist when the current batch ends and prefetches near the tail.
+- Wheel or swipe: vertical = next/previous, horizontal = like/dislike (dislike also advances).
+- Playback controls: tap to pause/resume, drag the progress bar, speeds 0.75/1/1.5/2×, optional auto‑play next.
+- Long‑press edges: left third rewinds in small steps; right third fast‑forwards at 2×.
+- Prefetches near the tail and refreshes the playlist when it runs out.
+- API base URL and optional bearer token are taken from environment variables.
 
-## Tech Stack
+## Requirements
 
-- Next.js 16 (App Router) + React 19
-- TypeScript
-- Tailwind CSS + shadcn/ui + Radix primitives
+- Node.js 18.18+ (Node 20 recommended)
+- pnpm
 
 ## Quick Start
 
-Prerequisites: Node.js 18.18+ (Node 20 recommended) and pnpm.
-
 ```bash
 pnpm install
+cp example.env .env.local   # adjust values as needed
 pnpm dev
 ```
 
-The app runs at http://localhost:3000.
-Ensure your backend API is reachable at http://localhost:8000 (matching the defaults) or set env vars to point elsewhere.
+The app runs at http://localhost:3000. Make sure your backend is reachable (defaults to http://localhost:8000).
 
 ## Configuration
 
-- Environment:
-  - `NEXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:8000`)
-  - `NEXT_PUBLIC_API_BEARER_TOKEN` (optional; falls back to `NEXT_PUBLIC_API_TOKEN`)
-- API paths are fixed in `lib/config.ts`:
-  - `playlistPath=/api/v1/playlist`
-  - `likePath=/api/v1/videos/{id}/like`
-  - `dislikePath=/api/v1/videos/{id}/dislike`
-  - `impressionPath=/api/v1/videos/{id}/impression`
-  - `notPlayablePath=/api/v1/videos/{id}/not-playable`
-- Streaming auth: requests include `Authorization: Bearer <token>` when the env var is set.
-- Preloading: defaults to preloading the next 3 videos.
+Environment variables (see `example.env`):
 
-## Expected Backend Contract
+- `NEXT_PUBLIC_API_BASE_URL` — defaults to `http://localhost:8000`
+- `NEXT_PUBLIC_API_BEARER_TOKEN` — optional bearer token (falls back to `NEXT_PUBLIC_API_TOKEN`)
 
-- `GET {baseUrl}{playlistPath}?cursor=<cursor>` -> `{ items: VideoItem[]; nextCursor: string | null }`
-- `POST {baseUrl}{likePath.replace("{id}", id)}`
-- `POST {baseUrl}{dislikePath.replace("{id}", id)}`
-- `VideoItem`: `{ id: string; url: string; cover?: string; title?: string; duration?: number; orientation?: "portrait" | "landscape" }`
+API paths are fixed in `lib/config.ts`:
 
-See `docs/api.md` for a fuller proposal, including pagination notes and an optional impression endpoint.
+- `playlistPath=/api/v1/playlist`
+- `likePath=/api/v1/videos/{id}/like`
+- `dislikePath=/api/v1/videos/{id}/dislike`
+- `impressionPath=/api/v1/videos/{id}/impression`
+- `notPlayablePath=/api/v1/videos/{id}/not-playable`
 
-## Gestures and Controls
+Preloading: by default the player preloads the next 3 videos.
+
+## Gestures & Controls
 
 - Scroll or swipe up/down: next / previous video.
 - Scroll or swipe left/right: like / dislike, then advance.
-- Long-press left third: rewind in ~0.4s steps.
-- Long-press right third: fast-forward at 2x.
-- Tap center: pause/resume. Buttons for play/pause and navigation are also available.
-- Drag the progress bar to seek; choose playback speed from the dropdown.
+- Long‑press left third: rewind in ~0.4s steps.
+- Long‑press right third: fast‑forward at 2×.
+- Tap center: pause/resume (buttons available for play/pause and navigation).
+- Drag the progress bar to seek; pick playback speed from the dropdown.
 
-## Project Structure
+## Backend Expectations
 
-- `app/` - App Router entry, styles, PWA manifest.
-- `components/` - Player and shared UI primitives.
-- `providers/` - React contexts for playlist state.
-- `lib/` - Types, config helpers, and API client.
-- `public/` - Static assets.
-- `docs/api.md` - Proposed backend contract.
+- `GET {baseUrl}{playlistPath}?cursor=<cursor>` → `{ items: VideoItem[]; nextCursor: string | null }`
+- `POST {baseUrl}{likePath.replace("{id}", id)}`
+- `POST {baseUrl}{dislikePath.replace("{id}", id)}`
+- Optional `POST {baseUrl}{impressionPath.replace("{id}", id)}` for watch progress
+- `VideoItem`: `{ id: string; url: string; cover?: string; title?: string; duration?: number; orientation?: "portrait" | "landscape" }`
+
+See `docs/api.md` for the full proposal and error model.
 
 ## Scripts
 
-- `pnpm dev` - start dev server
-- `pnpm build` - production build
-- `pnpm start` - serve built app
-- `pnpm lint` - run eslint with max-warnings=0
+- `pnpm dev` — start dev server
+- `pnpm build` — production build
+- `pnpm start` — serve built app
+- `pnpm lint` — run eslint with max-warnings=0
+
+## Project Structure
+
+- `app/` — App Router entry, global styles, manifest.
+- `components/` — player and shared UI primitives (shadcn/radix-based).
+- `providers/` — React contexts (playlist, settings).
+- `lib/` — API client, config, and shared types.
+- `hooks/` — reusable client hooks.
+- `docs/` — backend API proposal.
+- `public/` — static assets.
 
 ## Deployment
 
-1. Configure `NEXT_PUBLIC_API_BASE_URL` (defaults to `http://localhost:8000`) and optionally `NEXT_PUBLIC_API_BEARER_TOKEN`.
+1. Set `NEXT_PUBLIC_API_BASE_URL` and optionally `NEXT_PUBLIC_API_BEARER_TOKEN`.
 2. `pnpm install && pnpm build`
 3. `pnpm start` to serve the built output.
 
